@@ -3,6 +3,16 @@ import platform
 import setuptools
 
 
+try:
+    import stackless
+except ImportError:
+    pass
+else:
+    # The only reason for this is us abusing Py_TPFLAGS reserved
+    # for Stackless. That's most likely a temporary limitation.
+    raise RuntimeError('memhive is not compatible with Stackless.')
+
+
 # Minimal dependencies required to test immutables.
 TEST_DEPENDENCIES = [
     # pycodestyle is a dependency of flake8, but it must be frozen because
@@ -51,6 +61,7 @@ if platform.python_implementation() == 'CPython':
                 "memhive/module.c",
                 "memhive/memhive.c",
                 "memhive/otherside.c",
+                "memhive/utils.c",
             ],
             extra_compile_args=CFLAGS,
             define_macros=define_macros,
