@@ -22,7 +22,9 @@
 #define MEMHIVE_IS_PROXYABLE(op) \
     (PyType_FastSubclass(Py_TYPE(op), MEMHIVE_TPFLAG_PROXYABLE))
 #define MEMHIVE_IS_COPYABLE(op) \
-    (PyUnicode_Check(op) || PyLong_Check(op) || PyBytes_Check(op))
+    (PyUnicode_Check(op) || PyLong_Check(op) || PyBytes_Check(op) || \
+     PyFloat_Check(op))
+#define MEMHIVE_IS_VALID_KEY(op)    MEMHIVE_IS_COPYABLE(op)
 
 
 // A type alias for PyObject* pointers to objects owned by a different

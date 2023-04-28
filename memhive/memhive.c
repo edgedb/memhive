@@ -75,9 +75,70 @@ memhive_tp_len(MemHive *o)
 }
 
 
+static PyObject *
+memhive_tp_subscript(MemHive *o, PyObject *key)
+{
+    if (pthread_rwlock_rdlock(&o->index_rwlock)) {
+        Py_FatalError("Failed to acquire the MemHive index read lock");
+    }
+
+    PyObject *val = PyDict_GetItemWithError(o->index, key);
+
+    if (pthread_rwlock_unlock(&o->index_rwlock)) {
+        Py_FatalError("Failed to release the MemHive index read lock");
+    }
+
+    if (val == NULL) {
+        if (PyErr_Occurred()) {
+            return NULL;
+        }
+        else {
+            PyErr_SetObject(PyExc_KeyError, key);
+        }
+    }
+
+    Py_INCREF(val);
+    return val;
+}
+
+
+static int
+memhive_tp_ass_sub(MemHive *o, PyObject *key, PyObject *val)
+{
+    if (!MEMHIVE_IS_VALID_KEY(key)) {
+        // we want to only allow primitive immutable objects as keys
+        PyErr_SetString(
+            PyExc_KeyError,
+            "only primitive immutable objects are allowed");
+        return -1;
+    }
+
+    if (!MEMHIVE_IS_PROXYABLE(val)) {
+        // we want to only allow proxyable objects as values
+        PyErr_SetString(
+            PyExc_ValueError,
+            "only proxyable objects are allowed");
+        return -1;
+    }
+
+    if (pthread_rwlock_wrlock(&o->index_rwlock)) {
+        Py_FatalError("Failed to acquire the MemHive index write lock");
+    }
+
+    int res = PyDict_SetItem(o->index, key, val);
+
+    if (pthread_rwlock_unlock(&o->index_rwlock)) {
+        Py_FatalError("Failed to release the MemHive index write lock");
+    }
+
+    return res;
+}
+
+
 static PyMappingMethods MemHive_as_mapping = {
-    (lenfunc)memhive_tp_len,             /* mp_length */
-    //(binaryfunc)map_tp_subscript,    /* mp_subscript */
+    (lenfunc)memhive_tp_len,                 /* mp_length */
+    (binaryfunc)memhive_tp_subscript,        /* mp_subscript */
+    (objobjargproc)memhive_tp_ass_sub,       /* mp_ass_subscript */
 };
 
 

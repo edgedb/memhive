@@ -4,6 +4,8 @@
 PyObject *
 MemHive_CopyObject(DistantPyObject *o)
 {
+    assert(o != NULL);
+
     if (o == Py_None || o == Py_True || o == Py_False || o == Py_Ellipsis) {
         // Well-known C-defined singletons are shared between
         // sub-interpreters.
@@ -29,6 +31,14 @@ MemHive_CopyObject(DistantPyObject *o)
         }
         // Safe for the same reasons _PyUnicode_Copy is safe.
         return _PyLong_Copy((PyLongObject*)o);
+    }
+
+    if (PyFloat_Check(o)) {
+        if (_Py_IsImmortal(o)) {
+            return o;
+        }
+        // Safe -- just accessing the struct member.
+        return PyFloat_FromDouble(PyFloat_AS_DOUBLE(o));
     }
 
     if (PyBytes_Check(o)) {
