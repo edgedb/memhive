@@ -9,3 +9,4 @@ else:
 
 
 from .hive import MemHive
+from ._memhive import Map

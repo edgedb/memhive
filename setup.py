@@ -62,6 +62,7 @@ if platform.python_implementation() == 'CPython':
                 "memhive/memhive.c",
                 "memhive/otherside.c",
                 "memhive/utils.c",
+                "memhive/map.c",
             ],
             extra_compile_args=CFLAGS,
             define_macros=define_macros,
