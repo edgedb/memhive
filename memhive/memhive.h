@@ -41,7 +41,7 @@ typedef struct {
     PyObject *index;
 } MemHive;
 
-PyTypeObject MemHive_Type;
+extern PyTypeObject MemHive_Type;
 
 
 typedef struct {
@@ -50,7 +50,7 @@ typedef struct {
     DistantPyObject *hive;
 } MemHiveProxy;
 
-PyTypeObject MemHiveProxy_Type;
+extern PyTypeObject MemHiveProxy_Type;
 
 
 

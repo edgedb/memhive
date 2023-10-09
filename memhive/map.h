@@ -103,17 +103,17 @@ typedef struct {
 /* PyTypes */
 
 
-PyTypeObject _Map_Type;
-PyTypeObject _MapMutation_Type;
-PyTypeObject _Map_ArrayNode_Type;
-PyTypeObject _Map_BitmapNode_Type;
-PyTypeObject _Map_CollisionNode_Type;
-PyTypeObject _MapKeys_Type;
-PyTypeObject _MapValues_Type;
-PyTypeObject _MapItems_Type;
-PyTypeObject _MapKeysIter_Type;
-PyTypeObject _MapValuesIter_Type;
-PyTypeObject _MapItemsIter_Type;
+extern PyTypeObject _Map_Type;
+extern PyTypeObject _MapMutation_Type;
+extern PyTypeObject _Map_ArrayNode_Type;
+extern PyTypeObject _Map_BitmapNode_Type;
+extern PyTypeObject _Map_CollisionNode_Type;
+extern PyTypeObject _MapKeys_Type;
+extern PyTypeObject _MapValues_Type;
+extern PyTypeObject _MapItems_Type;
+extern PyTypeObject _MapKeysIter_Type;
+extern PyTypeObject _MapValuesIter_Type;
+extern PyTypeObject _MapItemsIter_Type;
 
 
 #endif

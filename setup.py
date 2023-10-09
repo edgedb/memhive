@@ -30,7 +30,7 @@ EXTRA_DEPENDENCIES = {
 
 CFLAGS = ['-O2']
 if platform.uname().system != 'Windows':
-    CFLAGS.extend(['-std=c99', '-fsigned-char', '-Wall',
+    CFLAGS.extend(['-std=c11', '-fsigned-char', '-Wall',
                    '-Wsign-compare', '-Wconversion'])
 
 
@@ -97,7 +97,6 @@ setuptools.setup(
     url='https://github.com/MagicStack/immutables',
     license='Apache License, Version 2.0',
     packages=['memhive'],
-    # package_data={"immutables": ["py.typed", "*.pyi"]},
     provides=['memhive'],
     include_package_data=True,
     ext_modules=ext_modules,
