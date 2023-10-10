@@ -45,10 +45,16 @@ memhive_proxy_tp_dealloc(MemHiveProxy *o)
     PyObject_Del(o);
 }
 
+static PyObject *
+memhive_proxy_tp_subscript(MemHiveProxy *o, PyObject *key)
+{
+    return MemHive_Get(o->hive, key);
+}
+
 
 static PyMappingMethods MemHiveProxy_as_mapping = {
     (lenfunc)memhive_proxy_tp_len,             /* mp_length */
-    //(binaryfunc)map_tp_subscript,    /* mp_subscript */
+    (binaryfunc)memhive_proxy_tp_subscript,    /* mp_subscript */
 };
 
 

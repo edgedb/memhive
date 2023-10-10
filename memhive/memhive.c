@@ -82,7 +82,17 @@ memhive_tp_subscript(MemHive *o, PyObject *key)
         Py_FatalError("Failed to acquire the MemHive index read lock");
     }
 
-    PyObject *val = PyDict_GetItemWithError(o->index, key);
+    PyObject *val = NULL;
+    if (PyDict_Contains(o->index, key)) {
+        // An error besides KeyError should never happen, as we're
+        // limiting the key type to a unicode object, which shouldn't ever
+        // fail in its __eq__ or __hash__ methods. But if it does...
+        // horrible things might happen, as we'd be remotely
+        // inducing another interpreter into an error state *at a distance*.
+        // Now this would be actually spooky.
+        // ToDo: we should stop using the dict type for the index.
+        val = PyDict_GetItemWithError(o->index, key);
+    }
 
     if (pthread_rwlock_unlock(&o->index_rwlock)) {
         Py_FatalError("Failed to release the MemHive index read lock");
@@ -90,7 +100,9 @@ memhive_tp_subscript(MemHive *o, PyObject *key)
 
     if (val == NULL) {
         if (PyErr_Occurred()) {
-            return NULL;
+            // See the above comment. If this happens we better know
+            // this *can* happen, so please, dear sir, abandon the ship.
+            Py_FatalError("Failed to lookup a key in the index");
         }
         else {
             PyErr_SetObject(PyExc_KeyError, key);
@@ -113,11 +125,11 @@ memhive_tp_ass_sub(MemHive *o, PyObject *key, PyObject *val)
         return -1;
     }
 
-    if (!MEMHIVE_IS_PROXYABLE(val)) {
+    if (!MEMHIVE_IS_PROXYABLE(val) && !MEMHIVE_IS_COPYABLE(val)) {
         // we want to only allow proxyable objects as values
         PyErr_SetString(
             PyExc_ValueError,
-            "only proxyable objects are allowed");
+            "only proxyable/copyable objects are allowed");
         return -1;
     }
 
@@ -133,6 +145,45 @@ memhive_tp_ass_sub(MemHive *o, PyObject *key, PyObject *val)
 
     return res;
 }
+
+
+Py_ssize_t
+MemHive_Len(MemHive *hive)
+{
+    return memhive_tp_len(hive);
+}
+
+PyObject *
+MemHive_Get(MemHive *hive, PyObject *key)
+{
+    if (pthread_rwlock_rdlock(&hive->index_rwlock)) {
+        Py_FatalError("Failed to acquire the MemHive index read lock");
+    }
+
+    PyObject *val = NULL;
+    if (PyDict_Contains(hive->index, key)) {
+        val = PyDict_GetItemWithError(hive->index, key);
+    }
+
+    PyObject *mirrored = NULL;
+    if (val != NULL) {
+        mirrored = MemHive_CopyObject(val);
+        if (mirrored == NULL) {
+            return NULL;
+        }
+    }
+
+    if (pthread_rwlock_unlock(&hive->index_rwlock)) {
+        Py_FatalError("Failed to release the MemHive index read lock");
+    }
+
+    if (val == NULL) {
+        PyErr_SetObject(PyExc_KeyError, key);
+    }
+
+    return val;
+}
+
 
 
 static PyMappingMethods MemHive_as_mapping = {

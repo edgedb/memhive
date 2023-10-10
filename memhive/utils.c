@@ -10,6 +10,7 @@ MemHive_CopyObject(DistantPyObject *o)
         // Well-known C-defined singletons are shared between
         // sub-interpreters.
         // https://peps.python.org/pep-0554/#interpreter-isolation
+        Py_INCREF(o);
         return o;
     }
 
@@ -17,6 +18,7 @@ MemHive_CopyObject(DistantPyObject *o)
         // Immortal & immutable objects are safe to share across
         // subinterpreters.
         if (_Py_IsImmortal(o) || PyUnicode_CHECK_INTERNED(o)) {
+            Py_INCREF(o);
             return o;
         }
         // Safe to call this as it will only read the data
@@ -27,6 +29,7 @@ MemHive_CopyObject(DistantPyObject *o)
 
     if (PyLong_Check(o)) {
         if (_Py_IsImmortal(o)) {
+            Py_INCREF(o);
             return o;
         }
         // Safe for the same reasons _PyUnicode_Copy is safe.
@@ -35,6 +38,7 @@ MemHive_CopyObject(DistantPyObject *o)
 
     if (PyFloat_Check(o)) {
         if (_Py_IsImmortal(o)) {
+            Py_INCREF(o);
             return o;
         }
         // Safe -- just accessing the struct member.
@@ -43,6 +47,7 @@ MemHive_CopyObject(DistantPyObject *o)
 
     if (PyBytes_Check(o)) {
         if (_Py_IsImmortal(o)) {
+            Py_INCREF(o);
             return o;
         }
         // Pure copy -- allocate a new object in this thread copying

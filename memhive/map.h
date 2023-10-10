@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdarg.h>
 #include "Python.h"
+#include "memhive.h"
 
 /*
 HAMT tree is shaped by hashes of keys. Every group of 5 bits of a hash denotes

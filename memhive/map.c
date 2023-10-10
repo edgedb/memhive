@@ -2,6 +2,7 @@
 #include <stdarg.h>
 #include "pythoncapi_compat.h"
 #include "map.h"
+#include "memhive.h"
 
 
 /*
@@ -3403,7 +3404,7 @@ static PyMappingMethods Map_as_mapping = {
 
 PyTypeObject _Map_Type = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "immutables._map.Map",
+    "memhive._memhive.Map",
     sizeof(MapObject),
     .tp_methods = Map_methods,
     .tp_as_mapping = &Map_as_mapping,
@@ -3415,6 +3416,7 @@ PyTypeObject _Map_Type = {
     #ifdef Py_TPFLAGS_MAPPING
         | Py_TPFLAGS_MAPPING
     #endif
+        | MEMHIVE_TPFLAGS_PROXYABLE
     ,
     .tp_richcompare = map_tp_richcompare,
     .tp_traverse = (traverseproc)map_tp_traverse,

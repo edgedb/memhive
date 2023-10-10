@@ -2,6 +2,13 @@
 #include "map.h"
 
 
+static struct PyModuleDef_Slot module_slots[] = {
+    {Py_mod_exec, module_exec},
+    {Py_mod_multiple_interpreters, Py_MOD_PER_INTERPRETER_GIL_SUPPORTED},
+    {0, NULL},
+};
+
+
 static struct PyModuleDef _module = {
     PyModuleDef_HEAD_INIT,      /* m_base */
     "_memhive",                 /* m_name */
@@ -15,10 +22,19 @@ static struct PyModuleDef _module = {
 };
 
 
-PyMODINIT_FUNC
-PyInit__memhive(void)
+static int
+module_exec(PyObject *m)
 {
-    PyObject *m = PyModule_Create(&_module);
+#define CREATE_TYPE(m, tp, spec, base)                                  \
+    do {                                                                \
+        tp = (PyTypeObject *)PyType_FromMetaclass(NULL, m, spec,        \
+                                                  (PyObject *)base);    \
+        if (tp == NULL) {                                               \
+            return -1;                                                  \
+        }                                                               \
+    } while (0)
+
+
 
     if (
         (PyType_Ready(&MemHive_Type) < 0) ||
