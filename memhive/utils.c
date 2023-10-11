@@ -15,9 +15,9 @@ MemHive_CopyObject(DistantPyObject *o)
     }
 
     if (PyUnicode_Check(o)) {
-        // Immortal & immutable objects are safe to share across
+        // Immortal strings are safe to share across
         // subinterpreters.
-        if (_Py_IsImmortal(o) || PyUnicode_CHECK_INTERNED(o)) {
+        if (_Py_IsImmortal(o)) {
             Py_INCREF(o);
             return o;
         }
