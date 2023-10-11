@@ -2,20 +2,6 @@
 #include "memhive.h"
 
 
-static MemHiveProxy *
-memhive_proxy_tp_new(void)
-{
-    MemHiveProxy *o;
-
-    o = PyObject_New(MemHiveProxy, &MemHiveProxy_Type);
-    if (o == NULL) {
-        return NULL;
-    }
-
-    return o;
-}
-
-
 static int
 memhive_proxy_tp_init(MemHiveProxy *o, PyObject *args, PyObject *kwds)
 {
@@ -48,31 +34,23 @@ memhive_proxy_tp_dealloc(MemHiveProxy *o)
 static PyObject *
 memhive_proxy_tp_subscript(MemHiveProxy *o, PyObject *key)
 {
-    return MemHive_Get(o->hive, key);
+    return MemHive_Get((MemHive *)o->hive, key);
 }
 
 
-static PyMappingMethods MemHiveProxy_as_mapping = {
-    (lenfunc)memhive_proxy_tp_len,             /* mp_length */
-    (binaryfunc)memhive_proxy_tp_subscript,    /* mp_subscript */
+PyType_Slot MemHiveProxy_TypeSlots[] = {
+    {Py_mp_length, (lenfunc)memhive_proxy_tp_len},
+    {Py_mp_subscript, (binaryfunc)memhive_proxy_tp_subscript},
+    {Py_tp_init, (initproc)memhive_proxy_tp_init},
+    {Py_tp_dealloc, (destructor)memhive_proxy_tp_dealloc},
+    {0, NULL},
 };
 
 
-PyTypeObject MemHiveProxy_Type = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name = "memhive._MemHiveProxy",
-
-    .tp_basicsize = sizeof(MemHiveProxy),
-    .tp_itemsize = 0,
-
-    .tp_as_mapping = &MemHiveProxy_as_mapping,
-
-    .tp_getattro = PyObject_GenericGetAttr,
-
-    // this is a non-GC object
-    .tp_flags = Py_TPFLAGS_DEFAULT,
-
-    .tp_new = (newfunc)memhive_proxy_tp_new,
-    .tp_init = (initproc)memhive_proxy_tp_init,
-    .tp_dealloc = (destructor)memhive_proxy_tp_dealloc,
+PyType_Spec MemHiveProxy_TypeSpec = {
+    .name = "memhive._MemHiveProxy",
+    .basicsize = sizeof(MemHiveProxy),
+    .itemsize = 0,
+    .flags = Py_TPFLAGS_DEFAULT,
+    .slots = MemHiveProxy_TypeSlots,
 };

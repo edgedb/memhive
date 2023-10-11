@@ -64,7 +64,7 @@ typedef struct {
     PyObject *index;
 } MemHive;
 
-extern PyTypeObject MemHive_Type;
+extern PyType_Spec MemHive_TypeSpec;
 
 
 // MemHive objects API, every method is safe to call from
@@ -84,7 +84,7 @@ typedef struct {
     DistantPyObject *hive;
 } MemHiveProxy;
 
-extern PyTypeObject MemHiveProxy_Type;
+extern PyType_Spec MemHiveProxy_TypeSpec;
 
 
 
