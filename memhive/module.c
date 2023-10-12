@@ -2,12 +2,6 @@
 #include "map.h"
 
 
-typedef struct {
-    PyTypeObject *MemHive_Type;
-    PyTypeObject *MemHiveProxy_Type;
-} module_state;
-
-
 static struct PyModuleDef memhive_module;
 
 
@@ -39,8 +33,27 @@ static int
 module_clear(PyObject *mod)
 {
     module_state *state = PyModule_GetState(mod);
+
     Py_CLEAR(state->MemHive_Type);
     Py_CLEAR(state->MemHiveProxy_Type);
+
+    Py_CLEAR(state->MapType);
+    Py_CLEAR(state->MapMutationType);
+
+    Py_CLEAR(state->ArrayNodeType);
+    Py_CLEAR(state->BitmapNodeType);
+    Py_CLEAR(state->CollisionNodeType);
+
+    Py_CLEAR(state->MapKeysType);
+    Py_CLEAR(state->MapValuesType);
+    Py_CLEAR(state->MapItemsType);
+
+    Py_CLEAR(state->MapKeysIterType);
+    Py_CLEAR(state->MapValuesIterType);
+    Py_CLEAR(state->MapItemsIterType);
+
+    Py_CLEAR(state->empty_bitmap_node);
+
     return 0;
 }
 
@@ -49,8 +62,25 @@ static int
 module_traverse(PyObject *mod, visitproc visit, void *arg)
 {
     module_state *state = get_module_state(mod);
+
     Py_VISIT(state->MemHive_Type);
     Py_VISIT(state->MemHiveProxy_Type);
+
+    Py_VISIT(state->MapType);
+    Py_VISIT(state->MapMutationType);
+
+    Py_VISIT(state->ArrayNodeType);
+    Py_VISIT(state->BitmapNodeType);
+    Py_VISIT(state->CollisionNodeType);
+
+    Py_VISIT(state->MapKeysType);
+    Py_VISIT(state->MapValuesType);
+    Py_VISIT(state->MapItemsType);
+
+    Py_VISIT(state->MapKeysIterType);
+    Py_VISIT(state->MapValuesIterType);
+    Py_VISIT(state->MapItemsIterType);
+
     return 0;
 }
 
@@ -73,49 +103,38 @@ module_exec(PyObject *m)
 {
     module_state *state = get_module_state(m);
 
-#define CREATE_TYPE(mod, tp, spec, base)                                \
+    #define CREATE_TYPE(mod, tp, spec, base, exp)                       \
     do {                                                                \
         tp = (PyTypeObject *)PyType_FromMetaclass(                      \
             NULL, mod, spec, (PyObject *)base);                         \
         if (tp == NULL || PyType_Ready(tp) < 0) {                       \
             return -1;                                                  \
         }                                                               \
-        if (PyModule_AddType(mod, tp) < 0) {                            \
+        if (exp && (PyModule_AddType(mod, tp) < 0)) {                   \
             return -1;                                                  \
         }                                                               \
     } while (0)
 
-    CREATE_TYPE(m, state->MemHive_Type, &MemHive_TypeSpec, NULL);
-    CREATE_TYPE(m, state->MemHiveProxy_Type, &MemHiveProxy_TypeSpec, NULL);
+    CREATE_TYPE(m, state->MemHive_Type, &MemHive_TypeSpec, NULL, 1);
+    CREATE_TYPE(m, state->MemHiveProxy_Type, &MemHiveProxy_TypeSpec, NULL, 1);
 
-    // if (
-    //     (PyType_Ready(&MemHive_Type) < 0) ||
-    //     (PyType_Ready(&MemHiveProxy_Type) < 0)
-    // )
-    // {
-    //     return 0;
-    // }
+    CREATE_TYPE(m, state->MapType, &Map_TypeSpec, NULL, 1);
+    CREATE_TYPE(m, state->MapMutationType, &MapMutation_TypeSpec, NULL, 0);
 
-    // if ((PyType_Ready(&_Map_Type) < 0) ||
-    //     (PyType_Ready(&_MapMutation_Type) < 0) ||
-    //     (PyType_Ready(&_Map_ArrayNode_Type) < 0) ||
-    //     (PyType_Ready(&_Map_BitmapNode_Type) < 0) ||
-    //     (PyType_Ready(&_Map_CollisionNode_Type) < 0) ||
-    //     (PyType_Ready(&_MapKeys_Type) < 0) ||
-    //     (PyType_Ready(&_MapValues_Type) < 0) ||
-    //     (PyType_Ready(&_MapItems_Type) < 0) ||
-    //     (PyType_Ready(&_MapKeysIter_Type) < 0) ||
-    //     (PyType_Ready(&_MapValuesIter_Type) < 0) ||
-    //     (PyType_Ready(&_MapItemsIter_Type) < 0))
-    // {
-    //     return 0;
-    // }
+    CREATE_TYPE(m, state->ArrayNodeType, &ArrayNode_TypeSpec, NULL, 0);
+    CREATE_TYPE(m, state->BitmapNodeType, &BitmapNode_TypeSpec, NULL, 0);
+    CREATE_TYPE(m, state->CollisionNodeType, &CollisionNode_TypeSpec, NULL, 0);
 
-    // Py_INCREF(&_Map_Type);
-    // if (PyModule_AddObject(m, "Map", (PyObject *)&_Map_Type) < 0) {
-    //     Py_DECREF(&_Map_Type);
-    //     return NULL;
-    // }
+    CREATE_TYPE(m, state->MapKeysType, &MapKeys_TypeSpec, NULL, 0);
+    CREATE_TYPE(m, state->MapValuesType, &MapValues_TypeSpec, NULL, 0);
+    CREATE_TYPE(m, state->MapItemsType, &MapItems_TypeSpec, NULL, 0);
+
+    CREATE_TYPE(m, state->MapKeysIterType, &MapKeysIter_TypeSpec, NULL, 0);
+    CREATE_TYPE(m, state->MapValuesIterType, &MapValuesIter_TypeSpec, NULL, 0);
+    CREATE_TYPE(m, state->MapItemsIterType, &MapItemsIter_TypeSpec, NULL, 0);
+
+    state->mutid_counter = 1;
+    state->empty_bitmap_node = _map_node_bitmap_new(state, 0, 0);
 
     return 0;
 }

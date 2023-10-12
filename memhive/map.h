@@ -4,7 +4,6 @@
 #include <stdint.h>
 #include <stdarg.h>
 #include "Python.h"
-#include "memhive.h"
 
 /*
 HAMT tree is shaped by hashes of keys. Every group of 5 bits of a hash denotes
@@ -20,8 +19,8 @@ This constant is used to define a datastucture for storing iteration state.
 #define _Py_HAMT_MAX_TREE_DEPTH 8
 
 
-#define Map_Check(o) (Py_TYPE(o) == &_Map_Type)
-#define MapMutation_Check(o) (Py_TYPE(o) == &_MapMutation_Type)
+#define Map_Check(state, o) (Py_IS_TYPE(o, state->MapType))
+#define MapMutation_Check(state, o) (Py_IS_TYPE(o, state->MapMutationType))
 
 
 /* Abstract tree node. */
@@ -30,12 +29,18 @@ typedef struct {
 } MapNode;
 
 
+#ifdef Py_TPFLAGS_MANAGED_WEAKREF
+#define _MapCommonFields(pref)          \
+    PyObject_HEAD                       \
+    MapNode *pref##_root;               \
+    Py_ssize_t pref##_count;
+#else
 #define _MapCommonFields(pref)          \
     PyObject_HEAD                       \
     MapNode *pref##_root;               \
     PyObject *pref##_weakreflist;       \
     Py_ssize_t pref##_count;
-
+#endif
 
 /* Base mapping struct; used in methods shared between
    MapObject and MapMutationObject types. */
@@ -101,20 +106,16 @@ typedef struct {
 } MapIterator;
 
 
-/* PyTypes */
-
-
-extern PyTypeObject _Map_Type;
-extern PyTypeObject _MapMutation_Type;
-extern PyTypeObject _Map_ArrayNode_Type;
-extern PyTypeObject _Map_BitmapNode_Type;
-extern PyTypeObject _Map_CollisionNode_Type;
-extern PyTypeObject _MapKeys_Type;
-extern PyTypeObject _MapValues_Type;
-extern PyTypeObject _MapItems_Type;
-extern PyTypeObject _MapKeysIter_Type;
-extern PyTypeObject _MapValuesIter_Type;
-extern PyTypeObject _MapItemsIter_Type;
-
+extern PyType_Spec MapItems_TypeSpec;
+extern PyType_Spec MapItemsIter_TypeSpec;
+extern PyType_Spec MapKeys_TypeSpec;
+extern PyType_Spec MapKeysIter_TypeSpec;
+extern PyType_Spec MapValues_TypeSpec;
+extern PyType_Spec MapValuesIter_TypeSpec;
+extern PyType_Spec Map_TypeSpec;
+extern PyType_Spec MapMutation_TypeSpec;
+extern PyType_Spec ArrayNode_TypeSpec;
+extern PyType_Spec BitmapNode_TypeSpec;
+extern PyType_Spec CollisionNode_TypeSpec;
 
 #endif

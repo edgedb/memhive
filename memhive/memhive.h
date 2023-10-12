@@ -11,6 +11,8 @@
 
 #include "Python.h"
 
+#include "map.h"
+
 
 // We need a way to indicate that a Python object can be proxided
 // from another sub-interpreter, and we need to be able to check that
@@ -86,6 +88,31 @@ typedef struct {
 
 extern PyType_Spec MemHiveProxy_TypeSpec;
 
+
+typedef struct {
+    MapNode *empty_bitmap_node;
+    uint64_t mutid_counter;
+
+    PyTypeObject *MapType;
+    PyTypeObject *MapMutationType;
+
+    PyTypeObject *ArrayNodeType;
+    PyTypeObject *BitmapNodeType;
+    PyTypeObject *CollisionNodeType;
+
+    PyTypeObject *MapItemsType;
+    PyTypeObject *MapItemsIterType;
+    PyTypeObject *MapValuesType;
+    PyTypeObject *MapValuesIterType;
+    PyTypeObject *MapKeysType;
+    PyTypeObject *MapKeysIterType;
+
+    PyTypeObject *MemHive_Type;
+    PyTypeObject *MemHiveProxy_Type;
+} module_state;
+
+MapNode *
+_map_node_bitmap_new(module_state *state, Py_ssize_t size, uint64_t mutid);
 
 
 #endif

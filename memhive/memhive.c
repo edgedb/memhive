@@ -149,16 +149,16 @@ MemHive_Get(MemHive *hive, PyObject *key)
         val = PyDict_GetItemWithError(hive->index, key);
     }
 
+    if (pthread_rwlock_unlock(&hive->index_rwlock)) {
+        Py_FatalError("Failed to release the MemHive index read lock");
+    }
+
     PyObject *mirrored = NULL;
     if (val != NULL) {
         mirrored = MemHive_CopyObject(val);
         if (mirrored == NULL) {
             return NULL;
         }
-    }
-
-    if (pthread_rwlock_unlock(&hive->index_rwlock)) {
-        Py_FatalError("Failed to release the MemHive index read lock");
     }
 
     if (val == NULL) {

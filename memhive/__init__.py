@@ -13,7 +13,12 @@ import textwrap
 import threading
 import _xxsubinterpreters as subint
 
-from .hive import MemHive as _Mem
+from ._memhive import _MemHive
+from ._memhive import Map
+
+
+class _Mem(_MemHive):
+    pass
 
 
 class MemHive:
@@ -56,12 +61,18 @@ class MemHiveContext:
             sub = subint.create(isolated=True)
             try:
                 subint.run_string(sub, code)
+            except Exception as ex:
+                print('!!-1', type(ex), '|', ex)
+                raise
             finally:
                 subint.destroy(sub)
 
         thread = threading.Thread(target=runner, args=(code,))
         try:
             thread.start()
+        except Exception as ex:
+            print('!!-2', type(ex), '|', ex)
+            raise
         finally:
             thread.join()
 
