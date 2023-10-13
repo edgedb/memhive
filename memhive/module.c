@@ -136,6 +136,12 @@ module_exec(PyObject *m)
     state->mutid_counter = 1;
     state->empty_bitmap_node = _map_node_bitmap_new(state, 0, 0);
 
+    PyThreadState *tstate = PyThreadState_Get();
+    assert(tstate != NULL);
+    PyInterpreterState *interp = PyThreadState_GetInterpreter(tstate);
+    assert(interp != NULL);
+    state->interpreter_id = PyInterpreterState_GetID(interp);
+
     return 0;
 }
 

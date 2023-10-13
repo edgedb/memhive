@@ -90,6 +90,8 @@ extern PyType_Spec MemHiveProxy_TypeSpec;
 
 
 typedef struct {
+    int64_t interpreter_id;
+
     MapNode *empty_bitmap_node;
     uint64_t mutid_counter;
 
