@@ -12,22 +12,13 @@
 #include "Python.h"
 
 #include "map.h"
+#include "proxy.h"
+#include "module.h"
 
 
-// We need a way to indicate that a Python object can be proxided
-// from another sub-interpreter, and we need to be able to check that
-// as fast as possible. Given that not too many people use Stackless
-// nowadays it makes sense to just reuse the bit reserved for Stackless
-// here. This will likely have to be fixed somehow later, I'm not
-// too happy with this hack.
-#define MEMHIVE_TPFLAGS_PROXYABLE    (1UL << 15)
-
-
-// Both of the following macros are safe to use on pointers from
-// other subinterpreters as they only depent on the consistent structs
-// layouts and constants being the same everywhere, which they are.
-#define MEMHIVE_IS_PROXYABLE(op) \
-    (PyType_FastSubclass(Py_TYPE(op), MEMHIVE_TPFLAGS_PROXYABLE))
+// Safe to use on pointers from other subinterpreters as they only
+// depend on the consistent structs layouts and constants being the
+// same everywhere, which they are.
 #define MEMHIVE_IS_COPYABLE(op) \
     (PyUnicode_Check(op) || PyLong_Check(op) || PyBytes_Check(op) || \
      PyFloat_Check(op))
@@ -39,8 +30,6 @@
 // A type alias for PyObject* pointers to objects owned by a different
 // sub-interpreter.
 typedef PyObject DistantPyObject;
-
-PyObject * MemHive_CopyObject(DistantPyObject *);
 
 
 typedef struct {
@@ -69,17 +58,6 @@ typedef struct {
 extern PyType_Spec MemHive_TypeSpec;
 
 
-// MemHive objects API, every method is safe to call from
-// subinterpeters.
-
-Py_ssize_t MemHive_Len(MemHive *hive);
-
-// Gets a value for the key, NULL on KeyError.
-// The value will be safe to use in the calling subinterpreter.
-PyObject * MemHive_Get(MemHive *hive, PyObject *key);
-
-
-
 typedef struct {
     PyObject_HEAD
 
@@ -88,33 +66,23 @@ typedef struct {
 
 extern PyType_Spec MemHiveProxy_TypeSpec;
 
-
-typedef struct {
-    int64_t interpreter_id;
-
-    MapNode *empty_bitmap_node;
-    uint64_t mutid_counter;
-
-    PyTypeObject *MapType;
-    PyTypeObject *MapMutationType;
-
-    PyTypeObject *ArrayNodeType;
-    PyTypeObject *BitmapNodeType;
-    PyTypeObject *CollisionNodeType;
-
-    PyTypeObject *MapItemsType;
-    PyTypeObject *MapItemsIterType;
-    PyTypeObject *MapValuesType;
-    PyTypeObject *MapValuesIterType;
-    PyTypeObject *MapKeysType;
-    PyTypeObject *MapKeysIterType;
-
-    PyTypeObject *MemHive_Type;
-    PyTypeObject *MemHiveProxy_Type;
-} module_state;
-
 MapNode *
 _map_node_bitmap_new(module_state *state, Py_ssize_t size, uint64_t mutid);
+
+
+PyObject * MemHive_CopyObject(module_state *, DistantPyObject *);
+
+
+// MemHive objects API, every method is safe to call from
+// subinterpeters.
+
+Py_ssize_t MemHive_Len(
+    MemHive *hive);
+
+// Gets a value for the key, NULL on KeyError.
+// The value will be safe to use in the calling subinterpreter.
+PyObject * MemHive_Get(
+    module_state *calling_state, MemHive *hive, PyObject *key);
 
 
 #endif

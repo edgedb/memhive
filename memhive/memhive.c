@@ -138,7 +138,7 @@ MemHive_Len(MemHive *hive)
 }
 
 PyObject *
-MemHive_Get(MemHive *hive, PyObject *key)
+MemHive_Get(module_state *calling_state, MemHive *hive, PyObject *key)
 {
     if (pthread_rwlock_rdlock(&hive->index_rwlock)) {
         Py_FatalError("Failed to acquire the MemHive index read lock");
@@ -155,7 +155,7 @@ MemHive_Get(MemHive *hive, PyObject *key)
 
     PyObject *mirrored = NULL;
     if (val != NULL) {
-        mirrored = MemHive_CopyObject(val);
+        mirrored = MemHive_CopyObject(calling_state, val);
         if (mirrored == NULL) {
             return NULL;
         }

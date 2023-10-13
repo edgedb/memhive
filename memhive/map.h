@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stdarg.h>
 #include "Python.h"
+#include "module.h"
+#include "proxy.h"
 
 /*
 HAMT tree is shaped by hashes of keys. Every group of 5 bits of a hash denotes
@@ -23,20 +25,30 @@ This constant is used to define a datastucture for storing iteration state.
 #define MapMutation_Check(state, o) (Py_IS_TYPE(o, state->MapMutationType))
 
 
+#define _InterpreterFields      \
+    int64_t interpreter_id;
+
+#define _MapNodeCommonFields    \
+    _InterpreterFields
+
+
 /* Abstract tree node. */
 typedef struct {
     PyObject_HEAD
+    _InterpreterFields
 } MapNode;
 
 
 #ifdef Py_TPFLAGS_MANAGED_WEAKREF
 #define _MapCommonFields(pref)          \
-    PyObject_HEAD                       \
+    ProxyableObject __proxyable;        \
+    _InterpreterFields                  \
     MapNode *pref##_root;               \
     Py_ssize_t pref##_count;
 #else
 #define _MapCommonFields(pref)          \
-    PyObject_HEAD                       \
+    ProxyableObject __proxyable;        \
+    _InterpreterFields                  \
     MapNode *pref##_root;               \
     PyObject *pref##_weakreflist;       \
     Py_ssize_t pref##_count;
@@ -93,6 +105,7 @@ typedef struct {
 
 typedef struct {
     PyObject_HEAD
+    _InterpreterFields
     MapObject *mv_obj;
     binaryfunc mv_yield;
     PyTypeObject *mv_itertype;
@@ -100,6 +113,7 @@ typedef struct {
 
 typedef struct {
     PyObject_HEAD
+    _InterpreterFields
     MapObject *mi_obj;
     binaryfunc mi_yield;
     MapIteratorState mi_iter;
@@ -117,5 +131,7 @@ extern PyType_Spec MapMutation_TypeSpec;
 extern PyType_Spec ArrayNode_TypeSpec;
 extern PyType_Spec BitmapNode_TypeSpec;
 extern PyType_Spec CollisionNode_TypeSpec;
+
+PyObject * NewMapProxy(module_state *, PyObject *);
 
 #endif

@@ -34,7 +34,8 @@ memhive_proxy_tp_dealloc(MemHiveProxy *o)
 static PyObject *
 memhive_proxy_tp_subscript(MemHiveProxy *o, PyObject *key)
 {
-    return MemHive_Get((MemHive *)o->hive, key);
+    module_state *state = PyType_GetModuleState(Py_TYPE(o));
+    return MemHive_Get(state, (MemHive *)o->hive, key);
 }
 
 

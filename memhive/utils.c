@@ -2,7 +2,7 @@
 
 
 PyObject *
-MemHive_CopyObject(DistantPyObject *o)
+MemHive_CopyObject(module_state *calling_state, DistantPyObject *o)
 {
     assert(o != NULL);
 
@@ -58,6 +58,9 @@ MemHive_CopyObject(DistantPyObject *o)
         PyErr_SetString(PyExc_ValueError,
                         "no copy implementation");
         return NULL;
+    } else if (MEMHIVE_IS_PROXYABLE(o)) {
+        module_unaryfunc copy = ((ProxyableObject*)o)->proxy_desc->make_proxy;
+        return (*copy)(calling_state, o);
     } else {
         PyErr_SetString(PyExc_ValueError,
                         "cannot copy an object from another interpreter");

@@ -133,14 +133,22 @@ module_exec(PyObject *m)
     CREATE_TYPE(m, state->MapValuesIterType, &MapValuesIter_TypeSpec, NULL, 0);
     CREATE_TYPE(m, state->MapItemsIterType, &MapItemsIter_TypeSpec, NULL, 0);
 
-    state->mutid_counter = 1;
-    state->empty_bitmap_node = _map_node_bitmap_new(state, 0, 0);
-
     PyThreadState *tstate = PyThreadState_Get();
     assert(tstate != NULL);
     PyInterpreterState *interp = PyThreadState_GetInterpreter(tstate);
     assert(interp != NULL);
     state->interpreter_id = PyInterpreterState_GetID(interp);
+
+    state->mutid_counter = 1;
+    // Important to call this one after `state->interpreter_id` is set
+    state->empty_bitmap_node = (PyObject *)_map_node_bitmap_new(state, 0, 0);
+
+    ProxyDescriptor *proxy_desc = PyMem_RawMalloc(sizeof(ProxyDescriptor));
+    if (proxy_desc == NULL) {
+        return -1;
+    }
+    proxy_desc->make_proxy = NewMapProxy;
+    state->proxy_desc_template = proxy_desc;
 
     return 0;
 }

@@ -296,6 +296,7 @@ typedef enum {I_ITEM, I_END} map_iter_t;
 
 typedef struct {
     PyObject_HEAD
+    _MapNodeCommonFields
     MapNode *a_array[HAMT_ARRAY_NODE_SIZE];
     Py_ssize_t a_count;
     uint64_t a_mutid;
@@ -304,6 +305,7 @@ typedef struct {
 
 typedef struct {
     PyObject_VAR_HEAD
+    _MapNodeCommonFields
     uint64_t b_mutid;
     uint32_t b_bitmap;
     PyObject *b_array[1];
@@ -312,6 +314,7 @@ typedef struct {
 
 typedef struct {
     PyObject_VAR_HEAD
+    _MapNodeCommonFields
     uint64_t c_mutid;
     int32_t c_hash;
     PyObject *c_array[1];
@@ -607,6 +610,8 @@ _map_node_bitmap_new(module_state *state, Py_ssize_t size, uint64_t mutid)
     if (node == NULL) {
         return NULL;
     }
+
+    node->interpreter_id = state->interpreter_id;
 
     Py_SET_SIZE(node, size);
 
@@ -1416,6 +1421,8 @@ map_node_collision_new(module_state *state,
         return NULL;
     }
 
+    node->interpreter_id = state->interpreter_id;
+
     for (i = 0; i < size; i++) {
         node->c_array[i] = NULL;
     }
@@ -1803,6 +1810,8 @@ map_node_array_new(module_state *state, Py_ssize_t count, uint64_t mutid)
     if (node == NULL) {
         return NULL;
     }
+
+    node->interpreter_id = state->interpreter_id;
 
     for (i = 0; i < HAMT_ARRAY_NODE_SIZE; i++) {
         node->a_array[i] = NULL;
@@ -2701,6 +2710,8 @@ map_alloc(module_state *state)
     o->h_hash = -1;
     o->h_count = 0;
     o->h_root = NULL;
+    o->interpreter_id = state->interpreter_id;
+    ((ProxyableObject*)o)->proxy_desc = state->proxy_desc_template;
     PyObject_GC_Track(o);
     return o;
 }
@@ -2837,6 +2848,8 @@ map_baseview_newiter(module_state *state,
         return NULL;
     }
 
+    iter->interpreter_id = state->interpreter_id;
+
     Py_INCREF(map);
     iter->mi_obj = map;
     iter->mi_yield = yield;
@@ -2864,6 +2877,8 @@ map_baseview_new(module_state *state,
     if (view == NULL) {
         return NULL;
     }
+
+    view->interpreter_id = state->interpreter_id;
 
     Py_INCREF(o);
     view->mv_obj = o;
@@ -3235,6 +3250,13 @@ map_py_set(MapObject *self, PyObject *args)
     PyObject *val;
     module_state *state = get_module_state_by_obj((PyObject *)self);
 
+    if (self->interpreter_id != state->interpreter_id) {
+        PyErr_SetString(
+            PyExc_RuntimeError,
+            "can't set values from another interpreter");
+        return NULL;
+    }
+
     if (!PyArg_UnpackTuple(args, "set", 2, 2, &key, &val)) {
         return NULL;
     }
@@ -3294,6 +3316,8 @@ map_py_mutate(MapObject *self, PyObject *args)
     o->m_weakreflist = NULL;
     #endif
     o->m_count = self->h_count;
+    o->interpreter_id = state->interpreter_id;
+    ((ProxyableObject*)o)->proxy_desc = NULL;
 
     Py_INCREF(self->h_root);
     o->m_root = self->h_root;
@@ -4389,3 +4413,11 @@ PyType_Spec CollisionNode_TypeSpec = {
     .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
     .slots = CollisionNode_TypeSlots,
 };
+
+
+PyObject *
+NewMapProxy(module_state *calling_state, PyObject *map)
+{
+    PyErr_SetString(PyExc_ValueError, "Yo");
+    return NULL;
+}
