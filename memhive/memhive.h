@@ -66,7 +66,7 @@ typedef struct {
 
 extern PyType_Spec MemHiveProxy_TypeSpec;
 
-MapNode *
+struct MapNode *
 _map_node_bitmap_new(module_state *state, Py_ssize_t size, uint64_t mutid);
 
 

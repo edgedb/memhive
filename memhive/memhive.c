@@ -153,15 +153,9 @@ MemHive_Get(module_state *calling_state, MemHive *hive, PyObject *key)
         Py_FatalError("Failed to release the MemHive index read lock");
     }
 
-    PyObject *mirrored = NULL;
     if (val != NULL) {
-        mirrored = MemHive_CopyObject(calling_state, val);
-        if (mirrored == NULL) {
-            return NULL;
-        }
-    }
-
-    if (val == NULL) {
+        return MemHive_CopyObject(calling_state, val);
+    } else {
         PyErr_SetObject(PyExc_KeyError, key);
     }
 

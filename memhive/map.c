@@ -252,14 +252,32 @@ Further Reading
 */
 
 
+#define EXT(o) o
+
+#define __MAYBE(WHAT, OR_WHAT, state, node)                                   \
+    do {                                                                      \
+        if (((MapNode *)(node))->interpreter_id == (state)->interpreter_id) { \
+            WHAT(node);                                                       \
+        } else {                                                              \
+            OR_WHAT(node);                                                    \
+        }                                                                     \
+    } while (0);
+
+#define _NOP(node)
+#define _RESET(node) do { (node) = NULL; } while (0);
+
+#define MAYBE_CLEAR(state, node) __MAYBE(Py_CLEAR, _RESET, state, node)
+#define MAYBE_VISIT(state, node) __MAYBE(Py_VISIT, _NOP, state, node)
+
+
 #define IS_ARRAY_NODE(state, node) \
-    (Py_IS_TYPE(node, state->ArrayNodeType))
+    (((MapNode*)(node))->node_kind == N_ARRAY)
 
 #define IS_BITMAP_NODE(state, node) \
-    (Py_IS_TYPE(node, state->BitmapNodeType))
+    (((MapNode*)(node))->node_kind == N_BITMAP)
 
 #define IS_COLLISION_NODE(state, node) \
-    (Py_IS_TYPE(node, state->CollisionNodeType))
+    (((MapNode*)(node))->node_kind == N_COLLISION)
 
 
 /* Return type for 'find' (lookup a key) functions.
@@ -268,7 +286,7 @@ Further Reading
    * F_NOT_FOUND - the key was not found;
    * F_FOUND - the key was found.
 */
-typedef enum {F_ERROR, F_NOT_FOUND, F_FOUND} map_find_t;
+typedef enum {F_ERROR, F_NOT_FOUND, F_FOUND, F_FOUND_EXT} map_find_t;
 
 
 /* Return type for 'without' (delete a key) functions.
@@ -290,12 +308,24 @@ typedef enum {W_ERROR, W_NOT_FOUND, W_EMPTY, W_NEWNODE} map_without_t;
 */
 typedef enum {I_ITEM, I_END} map_iter_t;
 
+typedef enum {N_BITMAP, N_ARRAY, N_COLLISION} map_node_t;
+
 
 #define HAMT_ARRAY_NODE_SIZE 32
 
+#define _MapNodeCommonFields    \
+    _InterpreterFields          \
+    map_node_t node_kind;
+
+
+typedef struct MapNode {
+    PyObject_VAR_HEAD
+    _MapNodeCommonFields
+} MapNode;
+
 
 typedef struct {
-    PyObject_HEAD
+    PyObject_VAR_HEAD // XXX
     _MapNodeCommonFields
     MapNode *a_array[HAMT_ARRAY_NODE_SIZE];
     Py_ssize_t a_count;
@@ -612,6 +642,7 @@ _map_node_bitmap_new(module_state *state, Py_ssize_t size, uint64_t mutid)
     }
 
     node->interpreter_id = state->interpreter_id;
+    node->node_kind = N_BITMAP;
 
     Py_SET_SIZE(node, size);
 
@@ -1277,7 +1308,11 @@ map_node_bitmap_find(module_state *state,
     }
     if (comp_err == 1) {  /* key == key_or_null */
         *val = val_or_node;
-        return F_FOUND;
+        if (self->interpreter_id != state->interpreter_id) {
+            return F_FOUND_EXT;
+        } else {
+            return F_FOUND;
+        }
     }
 
     return F_NOT_FOUND;
@@ -1422,6 +1457,7 @@ map_node_collision_new(module_state *state,
     }
 
     node->interpreter_id = state->interpreter_id;
+    node->node_kind = N_COLLISION;
 
     for (i = 0; i < size; i++) {
         node->c_array[i] = NULL;
@@ -1457,7 +1493,11 @@ map_node_collision_find_index(module_state *state,
         }
         if (cmp == 1) {
             *idx = i;
-            return F_FOUND;
+            if (self->interpreter_id != state->interpreter_id) {
+                return F_FOUND_EXT;
+            } else {
+                return F_FOUND;
+            }
         }
     }
 
@@ -1714,7 +1754,8 @@ map_node_collision_find(module_state *state,
     *val = self->c_array[idx + 1];
     assert(*val != NULL);
 
-    return F_FOUND;
+    assert(res == F_FOUND || res == F_FOUND_EXT);
+    return res;
 }
 
 
@@ -1812,6 +1853,7 @@ map_node_array_new(module_state *state, Py_ssize_t count, uint64_t mutid)
     }
 
     node->interpreter_id = state->interpreter_id;
+    node->node_kind = N_ARRAY;
 
     for (i = 0; i < HAMT_ARRAY_NODE_SIZE; i++) {
         node->a_array[i] = NULL;
@@ -2392,7 +2434,8 @@ map_node_dump(module_state *state,
 
 static map_iter_t
 map_iterator_next(module_state *state,
-                  MapIteratorState *iter, PyObject **key, PyObject **val);
+                  MapIteratorState *iter,
+                  PyObject **n, PyObject **key, PyObject **val);
 
 
 static void
@@ -2412,7 +2455,7 @@ map_iterator_init(module_state *state, MapIteratorState *iter, MapNode *root)
 static map_iter_t
 map_iterator_bitmap_next(module_state *state,
                          MapIteratorState *iter,
-                         PyObject **key, PyObject **val)
+                         PyObject **n, PyObject **key, PyObject **val)
 {
     int8_t level = iter->i_level;
 
@@ -2425,7 +2468,7 @@ map_iterator_bitmap_next(module_state *state,
         iter->i_nodes[iter->i_level] = NULL;
 #endif
         iter->i_level--;
-        return map_iterator_next(state, iter, key, val);
+        return map_iterator_next(state, iter, n, key, val);
     }
 
     if (node->b_array[pos] == NULL) {
@@ -2438,9 +2481,10 @@ map_iterator_bitmap_next(module_state *state,
         iter->i_nodes[next_level] = (MapNode *)
             node->b_array[pos + 1];
 
-        return map_iterator_next(state, iter, key, val);
+        return map_iterator_next(state, iter, n, key, val);
     }
 
+    *n = (PyObject *)node;
     *key = node->b_array[pos];
     *val = node->b_array[pos + 1];
     iter->i_pos[level] = pos + 2;
@@ -2450,7 +2494,7 @@ map_iterator_bitmap_next(module_state *state,
 static map_iter_t
 map_iterator_collision_next(module_state *state,
                             MapIteratorState *iter,
-                            PyObject **key, PyObject **val)
+                            PyObject **n, PyObject **key, PyObject **val)
 {
     int8_t level = iter->i_level;
 
@@ -2463,9 +2507,10 @@ map_iterator_collision_next(module_state *state,
         iter->i_nodes[iter->i_level] = NULL;
 #endif
         iter->i_level--;
-        return map_iterator_next(state, iter, key, val);
+        return map_iterator_next(state, iter, n, key, val);
     }
 
+    *n = (PyObject *)node;
     *key = node->c_array[pos];
     *val = node->c_array[pos + 1];
     iter->i_pos[level] = pos + 2;
@@ -2475,7 +2520,7 @@ map_iterator_collision_next(module_state *state,
 static map_iter_t
 map_iterator_array_next(module_state *state,
                         MapIteratorState *iter,
-                        PyObject **key, PyObject **val)
+                        PyObject **n, PyObject **key, PyObject **val)
 {
     int8_t level = iter->i_level;
 
@@ -2488,7 +2533,7 @@ map_iterator_array_next(module_state *state,
         iter->i_nodes[iter->i_level] = NULL;
 #endif
         iter->i_level--;
-        return map_iterator_next(state, iter, key, val);
+        return map_iterator_next(state, iter, n, key, val);
     }
 
     for (Py_ssize_t i = pos; i < HAMT_ARRAY_NODE_SIZE; i++) {
@@ -2501,7 +2546,7 @@ map_iterator_array_next(module_state *state,
             iter->i_nodes[next_level] = node->a_array[i];
             iter->i_level = next_level;
 
-            return map_iterator_next(state, iter, key, val);
+            return map_iterator_next(state, iter, n, key, val);
         }
     }
 
@@ -2511,12 +2556,13 @@ map_iterator_array_next(module_state *state,
 #endif
 
     iter->i_level--;
-    return map_iterator_next(state, iter, key, val);
+    return map_iterator_next(state, iter, n, key, val);
 }
 
 static map_iter_t
 map_iterator_next(module_state *state,
-                  MapIteratorState *iter, PyObject **key, PyObject **val)
+                  MapIteratorState *iter,
+                  PyObject **n, PyObject **key, PyObject **val)
 {
     if (iter->i_level < 0) {
         return I_END;
@@ -2527,14 +2573,14 @@ map_iterator_next(module_state *state,
     MapNode *current = iter->i_nodes[iter->i_level];
 
     if (IS_BITMAP_NODE(state, current)) {
-        return map_iterator_bitmap_next(state, iter, key, val);
+        return map_iterator_bitmap_next(state, iter, n, key, val);
     }
     else if (IS_ARRAY_NODE(state, current)) {
-        return map_iterator_array_next(state, iter, key, val);
+        return map_iterator_array_next(state, iter, n, key, val);
     }
     else {
         assert(IS_COLLISION_NODE(state, current));
-        return map_iterator_collision_next(state, iter, key, val);
+        return map_iterator_collision_next(state, iter, n, key, val);
     }
 }
 
@@ -2657,6 +2703,7 @@ map_eq(module_state *state, BaseMapObject *v, BaseMapObject *w)
     MapIteratorState iter;
     map_iter_t iter_res;
     map_find_t find_res;
+    PyObject *_node;
     PyObject *v_key;
     PyObject *v_val;
     PyObject *w_val;
@@ -2664,7 +2711,7 @@ map_eq(module_state *state, BaseMapObject *v, BaseMapObject *w)
     map_iterator_init(state, &iter, v->b_root);
 
     do {
-        iter_res = map_iterator_next(state, &iter, &v_key, &v_val);
+        iter_res = map_iterator_next(state, &iter, &_node, &v_key, &v_val);
         if (iter_res == I_ITEM) {
             find_res = map_find(state, w, v_key, &w_val);
             switch (find_res) {
@@ -2674,6 +2721,7 @@ map_eq(module_state *state, BaseMapObject *v, BaseMapObject *w)
                 case F_NOT_FOUND:
                     return 0;
 
+                case F_FOUND_EXT:
                 case F_FOUND: {
                     int cmp = PyObject_RichCompareBool(v_val, w_val, Py_EQ);
                     if (cmp < 0) {
@@ -2787,10 +2835,13 @@ map_baseiter_tp_traverse(MapIterator *it, visitproc visit, void *arg)
 static PyObject *
 map_baseiter_tp_iternext(MapIterator *it)
 {
+    PyObject *node;
     PyObject *key;
     PyObject *val;
     module_state *state = get_module_state_by_obj((PyObject *)it);
-    map_iter_t res = map_iterator_next(state, &it->mi_iter, &key, &val);
+    map_iter_t res = map_iterator_next(state, &it->mi_iter, &node, &key, &val);
+
+    int need_copy = state->interpreter_id != ((MapNode *)node)->interpreter_id;
 
     switch (res) {
         case I_END:
@@ -2798,7 +2849,7 @@ map_baseiter_tp_iternext(MapIterator *it)
             return NULL;
 
         case I_ITEM: {
-            return (*(it->mi_yield))(key, val);
+            return (*(it->mi_yield))(need_copy, state, key, val);
         }
 
         default: {
@@ -2841,7 +2892,9 @@ map_baseview_tp_len(MapView *view)
 
 static PyObject *
 map_baseview_newiter(module_state *state,
-                     PyTypeObject *type, binaryfunc yield, MapObject *map)
+                     PyTypeObject *type,
+                     iteryield yield,
+                     MapObject *map)
 {
     MapIterator *iter = PyObject_GC_New(MapIterator, type);
     if (iter == NULL) {
@@ -2869,7 +2922,7 @@ map_baseview_iter(MapView *view)
 
 static PyObject *
 map_baseview_new(module_state *state,
-                 PyTypeObject *type, binaryfunc yield,
+                 PyTypeObject *type, iteryield yield,
                  MapObject *o, PyTypeObject *itertype)
 {
 
@@ -2946,9 +2999,27 @@ PyType_Spec MapItemsIter_TypeSpec = {
 
 
 static PyObject *
-map_iter_yield_items(PyObject *key, PyObject *val)
+map_iter_yield_items(int need_copy,
+                     module_state *state,
+                     PyObject *key,
+                     PyObject *val)
 {
-    return PyTuple_Pack(2, key, val);
+    if (need_copy) {
+        key = MemHive_CopyObject(state, key);
+        if (key == NULL) {
+            return NULL;
+        }
+        val = MemHive_CopyObject(state, val);
+        if (val == NULL) {
+            return NULL;
+        }
+    }
+    PyObject *ret = PyTuple_Pack(2, key, val);
+    if (need_copy) {
+        Py_DECREF(key);
+        Py_DECREF(val);
+    }
+    return ret;
 }
 
 static PyObject *
@@ -2999,8 +3070,14 @@ PyType_Spec MapKeysIter_TypeSpec = {
 
 
 static PyObject *
-map_iter_yield_keys(PyObject *key, PyObject *val)
+map_iter_yield_keys(int need_copy,
+                    module_state *state,
+                    PyObject *key,
+                    PyObject *val)
 {
+    if (need_copy) {
+        return MemHive_CopyObject(state, key);
+    }
     Py_INCREF(key);
     return key;
 }
@@ -3049,8 +3126,14 @@ PyType_Spec MapValuesIter_TypeSpec = {
 
 
 static PyObject *
-map_iter_yield_values(PyObject *key, PyObject *val)
+map_iter_yield_values(int need_copy,
+                      module_state *state,
+                      PyObject *key,
+                      PyObject *val)
 {
+    if (need_copy) {
+        return MemHive_CopyObject(state, val);
+    }
     Py_INCREF(val);
     return val;
 }
@@ -3136,7 +3219,8 @@ map_tp_init(MapObject *self, PyObject *args, PyObject *kwds)
 static int
 map_tp_clear(BaseMapObject *self)
 {
-    Py_CLEAR(self->b_root);
+    module_state *state = get_module_state_by_obj((PyObject *)self);
+    MAYBE_CLEAR(state, self->b_root);
     return 0;
 }
 
@@ -3144,8 +3228,9 @@ map_tp_clear(BaseMapObject *self)
 static int
 map_tp_traverse(BaseMapObject *self, visitproc visit, void *arg)
 {
+    module_state *state = get_module_state_by_obj((PyObject *)self);
     Py_VISIT(Py_TYPE(self));
-    Py_VISIT(self->b_root);
+    MAYBE_VISIT(state, self->b_root);
     return 0;
 }
 
@@ -3156,7 +3241,7 @@ map_tp_dealloc(BaseMapObject *self)
     PyObject_GC_UnTrack(self);
     PyObject_ClearWeakRefs((PyObject*)self);
     (void)map_tp_clear(self);
-    Py_TYPE(self)->tp_free(self);
+    // Py_TYPE(self)->tp_free(self);
     Py_DECREF(tp);
 }
 
@@ -3201,6 +3286,7 @@ map_tp_contains(BaseMapObject *self, PyObject *key)
             return -1;
         case F_NOT_FOUND:
             return 0;
+        case F_FOUND_EXT:
         case F_FOUND:
             return 1;
         default:
@@ -3222,6 +3308,8 @@ map_tp_subscript(BaseMapObject *self, PyObject *key)
         case F_FOUND:
             Py_INCREF(val);
             return val;
+        case F_FOUND_EXT:
+            return MemHive_CopyObject(state, val);
         case F_NOT_FOUND:
             PyErr_SetObject(PyExc_KeyError, key);
             return NULL;
@@ -3284,6 +3372,8 @@ map_py_get(BaseMapObject *self, PyObject *args)
         case F_FOUND:
             Py_INCREF(val);
             return val;
+        case F_FOUND_EXT:
+            return MemHive_CopyObject(state, val);
         case F_NOT_FOUND:
             if (def == NULL) {
                 Py_RETURN_NONE;
@@ -3438,10 +3528,11 @@ map_py_repr(BaseMapObject *m)
     map_iterator_init(state, &iter, m->b_root);
     int second = 0;
     do {
+        PyObject *_node;
         PyObject *v_key;
         PyObject *v_val;
 
-        iter_res = map_iterator_next(state, &iter, &v_key, &v_val);
+        iter_res = map_iterator_next(state, &iter, &_node, &v_key, &v_val);
         if (iter_res == I_ITEM) {
             if (second) {
                 if (_PyUnicodeWriter_WriteASCIIString(&writer, ", ", 2) < 0) {
@@ -3520,10 +3611,11 @@ map_py_hash(MapObject *self)
     map_iter_t iter_res;
     map_iterator_init(state, &iter, self->h_root);
     do {
+        PyObject *_node;
         PyObject *v_key;
         PyObject *v_val;
 
-        iter_res = map_iterator_next(state, &iter, &v_key, &v_val);
+        iter_res = map_iterator_next(state, &iter, &_node, &v_key, &v_val);
         if (iter_res == I_ITEM) {
             Py_hash_t vh = PyObject_Hash(v_key);
             if (vh == -1) {
@@ -3566,10 +3658,11 @@ map_reduce(MapObject *self)
 
     map_iterator_init(state, &iter, self->h_root);
     do {
+        PyObject *_node;
         PyObject *key;
         PyObject *val;
 
-        iter_res = map_iterator_next(state, &iter, &key, &val);
+        iter_res = map_iterator_next(state, &iter, &_node, &key, &val);
         if (iter_res == I_ITEM) {
             if (PyDict_SetItem(dict, key, val) < 0) {
                 Py_DECREF(dict);
@@ -3692,12 +3785,13 @@ map_node_update_from_map(module_state *state,
 
     map_iterator_init(state, &iter, map->h_root);
     do {
+        PyObject *_node;
         PyObject *key;
         PyObject *val;
         int32_t key_hash;
         int added_leaf;
 
-        iter_res = map_iterator_next(state, &iter, &key, &val);
+        iter_res = map_iterator_next(state, &iter, &_node, &key, &val);
         if (iter_res == I_ITEM) {
             key_hash = map_hash(key);
             if (key_hash == -1) {
@@ -4418,6 +4512,14 @@ PyType_Spec CollisionNode_TypeSpec = {
 PyObject *
 NewMapProxy(module_state *calling_state, PyObject *map)
 {
-    PyErr_SetString(PyExc_ValueError, "Yo");
-    return NULL;
+    MapObject *o = map_alloc(calling_state);
+    if (o == NULL) {
+        return NULL;
+    }
+
+    // here goes nothing...
+    o->h_root = ((MapObject *)EXT(map))->h_root;
+    o->h_count = ((MapObject *)EXT(map))->h_count;
+
+    return (PyObject *)o;
 }

@@ -28,28 +28,22 @@ This constant is used to define a datastucture for storing iteration state.
 #define _InterpreterFields      \
     int64_t interpreter_id;
 
-#define _MapNodeCommonFields    \
-    _InterpreterFields
-
 
 /* Abstract tree node. */
-typedef struct {
-    PyObject_HEAD
-    _InterpreterFields
-} MapNode;
+struct MapNode;
 
 
 #ifdef Py_TPFLAGS_MANAGED_WEAKREF
 #define _MapCommonFields(pref)          \
     ProxyableObject __proxyable;        \
     _InterpreterFields                  \
-    MapNode *pref##_root;               \
+    struct MapNode *pref##_root;               \
     Py_ssize_t pref##_count;
 #else
 #define _MapCommonFields(pref)          \
     ProxyableObject __proxyable;        \
     _InterpreterFields                  \
-    MapNode *pref##_root;               \
+    struct MapNode *pref##_root;               \
     PyObject *pref##_weakreflist;       \
     Py_ssize_t pref##_count;
 #endif
@@ -75,6 +69,9 @@ typedef struct {
 } MapMutationObject;
 
 
+typedef PyObject * (*iteryield)(int, module_state *, PyObject *, PyObject *);
+
+
 /* A struct to hold the state of depth-first traverse of the tree.
 
    HAMT is an immutable collection.  Iterators will hold a strong reference
@@ -88,7 +85,7 @@ typedef struct {
    - i_pos: an array of positions within nodes in i_nodes.
 */
 typedef struct {
-    MapNode *i_nodes[_Py_HAMT_MAX_TREE_DEPTH];
+    struct MapNode *i_nodes[_Py_HAMT_MAX_TREE_DEPTH];
     Py_ssize_t i_pos[_Py_HAMT_MAX_TREE_DEPTH];
     int8_t i_level;
 } MapIteratorState;
@@ -107,7 +104,7 @@ typedef struct {
     PyObject_HEAD
     _InterpreterFields
     MapObject *mv_obj;
-    binaryfunc mv_yield;
+    iteryield mv_yield;
     PyTypeObject *mv_itertype;
 } MapView;
 
@@ -115,7 +112,7 @@ typedef struct {
     PyObject_HEAD
     _InterpreterFields
     MapObject *mi_obj;
-    binaryfunc mi_yield;
+    iteryield mi_yield;
     MapIteratorState mi_iter;
 } MapIterator;
 
