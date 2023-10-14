@@ -3241,7 +3241,7 @@ map_tp_dealloc(BaseMapObject *self)
     PyObject_GC_UnTrack(self);
     PyObject_ClearWeakRefs((PyObject*)self);
     (void)map_tp_clear(self);
-    // Py_TYPE(self)->tp_free(self);
+    Py_TYPE(self)->tp_free(self);
     Py_DECREF(tp);
 }
 
