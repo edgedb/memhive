@@ -39,7 +39,31 @@ memhive_proxy_tp_subscript(MemHiveProxy *o, PyObject *key)
 }
 
 
+static PyObject *
+memhive_proxy_py_put(MemHiveProxy *o, PyObject *borrowed_val)
+{
+    MemQueue *q = ((MemHive *)o->hive)->out;
+    return MemQueue_Put(q, borrowed_val);
+}
+
+static PyObject *
+memhive_proxy_py_get_proxy(MemHiveProxy *o, PyObject *args)
+{
+    module_state *state = MemHive_GetModuleStateByObj((PyObject*)o);
+    MemQueue *q = ((MemHive *)o->hive)->in;
+    return MemQueue_GetAndProxy(q, state);
+}
+
+
+static PyMethodDef MemHiveProxy_methods[] = {
+    {"put_borrowed", (PyCFunction)memhive_proxy_py_put, METH_O, NULL},
+    {"get_proxied", (PyCFunction)memhive_proxy_py_get_proxy, METH_NOARGS, NULL},
+    {NULL, NULL}
+};
+
+
 PyType_Slot MemHiveProxy_TypeSlots[] = {
+    {Py_tp_methods, MemHiveProxy_methods},
     {Py_mp_length, (lenfunc)memhive_proxy_tp_len},
     {Py_mp_subscript, (binaryfunc)memhive_proxy_tp_subscript},
     {Py_tp_init, (initproc)memhive_proxy_tp_init},

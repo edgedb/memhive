@@ -15,6 +15,7 @@
 #include "proxy.h"
 #include "module.h"
 #include "utils.h"
+#include "queue.h"
 
 
 // Safe to use on pointers from other subinterpreters as they only
@@ -49,6 +50,9 @@ typedef struct {
     //   in some future version of Python we'll need to workaround
     //   by using custom hash functions for all types we support.)
     PyObject *index;
+
+    MemQueue *in;
+    MemQueue *out;
 } MemHive;
 
 extern PyType_Spec MemHive_TypeSpec;

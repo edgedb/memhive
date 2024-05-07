@@ -6,6 +6,8 @@
 
 #include "Python.h"
 
+#include "module.h"
+
 typedef struct {
     PyObject_HEAD
 
@@ -25,6 +27,12 @@ PyObject *
 MemQueue_Put(MemQueue *queue, PyObject *borrowed_val);
 
 PyObject *
-MemQueue_GetAndProxy(MemQueue *queue);
+MemQueue_GetAndProxy(MemQueue *queue, module_state *calling_state);
+
+MemQueue *
+NewMemQueue(module_state *calling_state);
+
+int
+MemQueue_Close(MemQueue *queue);
 
 #endif

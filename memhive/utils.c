@@ -6,6 +6,10 @@ MemHive_CopyObject(module_state *calling_state, DistantPyObject *o)
 {
     assert(o != NULL);
 
+    printf("---\n");
+    PyObject_Print(o, stdout, 0);
+    printf("===\n");
+
     if (o == Py_None || o == Py_True || o == Py_False || o == Py_Ellipsis) {
         // Well-known C-defined singletons are shared between
         // sub-interpreters.
@@ -16,9 +20,9 @@ MemHive_CopyObject(module_state *calling_state, DistantPyObject *o)
     if (PyUnicode_Check(o)) {
         // Immortal strings are safe to share across
         // subinterpreters.
-        if (_Py_IsImmortal(o)) {
-            return o;
-        }
+        // if (_Py_IsImmortal(o)) {
+        //     return o;
+        // }
         // Safe to call this as it will only read the data
         // from "o", allocate a new object in the host interpreter,
         // and memcpy into it.
@@ -26,26 +30,26 @@ MemHive_CopyObject(module_state *calling_state, DistantPyObject *o)
     }
 
     if (PyLong_Check(o)) {
-        if (_Py_IsImmortal(o)) {
-            return o;
-        }
+        // if (_Py_IsImmortal(o)) {
+        //     return o;
+        // }
         // Safe for the same reasons _PyUnicode_Copy is safe.
         return _PyLong_Copy((PyLongObject*)o);
     }
 
     if (PyFloat_Check(o)) {
-        if (_Py_IsImmortal(o)) {
-            return o;
-        }
+        // if (_Py_IsImmortal(o)) {
+        //     return o;
+        // }
         // Safe -- just accessing the struct member.
         return PyFloat_FromDouble(PyFloat_AS_DOUBLE(o));
     }
 
     if (PyBytes_Check(o)) {
-        if (_Py_IsImmortal(o)) {
-            Py_INCREF(o);
-            return o;
-        }
+        // if (_Py_IsImmortal(o)) {
+        //     Py_INCREF(o);
+        //     return o;
+        // }
         // Pure copy -- allocate a new object in this thread copying
         // memory from the bytes object on the other side.
         return PyBytes_FromStringAndSize(
@@ -61,6 +65,14 @@ MemHive_CopyObject(module_state *calling_state, DistantPyObject *o)
     } else if (MEMHIVE_IS_PROXYABLE(o)) {
         module_unaryfunc copy = ((ProxyableObject*)o)->proxy_desc->make_proxy;
         return (*copy)(calling_state, o);
+    } if (PyTuple_CheckExact(o)) {
+        PyObject *t = PyTuple_New(Py_SIZE(o));
+        for (Py_ssize_t i = 0; i < Py_SIZE(o); i++) {
+            PyTuple_SetItem(t, i, MemHive_CopyObject(
+                calling_state, PyTuple_GetItem(o, i)
+            ));
+        }
+        return t;
     } else {
         PyErr_SetString(PyExc_ValueError,
                         "cannot copy an object from another interpreter");

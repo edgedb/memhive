@@ -45,7 +45,9 @@ MemQueue_Put(MemQueue *queue, PyObject *borrowed_val)
         return NULL;
     }
 
+    Py_BEGIN_ALLOW_THREADS
     pthread_mutex_lock(&queue->mut);
+    Py_END_ALLOW_THREADS
 
     i->borrowed_val = borrowed_val;
     i->next = NULL;
@@ -70,13 +72,23 @@ MemQueue_Put(MemQueue *queue, PyObject *borrowed_val)
 static PyObject *
 memqueue_get(MemQueue *queue)
 {
+    Py_BEGIN_ALLOW_THREADS
     pthread_mutex_lock(&queue->mut);
+    Py_END_ALLOW_THREADS
 
     while (queue->first == NULL && queue->closed == 0) {
+        Py_BEGIN_ALLOW_THREADS
         pthread_cond_wait(&queue->cond, &queue->mut);
+        Py_END_ALLOW_THREADS
+        if (PyErr_CheckSignals()) {
+            queue->closed = 1;
+            pthread_cond_broadcast(&queue->cond);
+            pthread_mutex_unlock(&queue->mut);
+            return NULL;
+        }
     }
 
-    if (queue->closed == 0) {
+    if (queue->closed == 1) {
         pthread_mutex_unlock(&queue->mut);
         PyErr_SetString(PyExc_ValueError,
                         "can't get, the queue is closed");
@@ -100,56 +112,50 @@ memqueue_get(MemQueue *queue)
 }
 
 PyObject *
-MemQueue_GetAndProxy(MemQueue *queue)
+MemQueue_GetAndProxy(MemQueue *queue, module_state *state)
 {
     PyObject *borrowed = memqueue_get(queue);
     if (borrowed == NULL) {
         return NULL;
     }
-    module_state *state = MemHive_GetModuleStateByObj(
-        (PyObject*)queue);
     return MemHive_CopyObject(state, borrowed);
 }
 
-static PyObject *
-queue_py_put(MemQueue *queue, PyObject *val)
-{
-    return MemQueue_Put(queue, val);
-}
-
-static PyObject *
-queue_py_get_proxy(MemQueue *queue, PyObject *args)
-{
-    return MemQueue_GetAndProxy(queue);
-}
-
-static PyObject *
-queue_py_close(MemQueue *queue, PyObject *args)
+int
+MemQueue_Close(MemQueue *queue)
 {
     // OK to read `queue->closed` without the lock as only
     // the owner thread can set it.
     if (queue->closed == 1) {
-        Py_RETURN_NONE;
+        return 0;
     }
     queue->closed = 1;
+    Py_BEGIN_ALLOW_THREADS
     pthread_mutex_lock(&queue->mut);
+    Py_END_ALLOW_THREADS
     if (queue->length == 0) {
         pthread_cond_broadcast(&queue->cond);
     }
     pthread_mutex_unlock(&queue->mut);
 
-    Py_RETURN_NONE;
+    return 0;
 }
 
-static PyMethodDef MemQueue_methods[] = {
-    {"put_borrow", (PyCFunction)queue_py_put, METH_O, NULL},
-    {"get_proxy", (PyCFunction)queue_py_get_proxy, METH_NOARGS, NULL},
-    {"close", (PyCFunction)queue_py_close, METH_NOARGS, NULL},
-    {NULL, NULL}
-};
+MemQueue *
+NewMemQueue(module_state *calling_state)
+{
+    MemQueue *o;
+    o = PyObject_GC_New(MemQueue, calling_state->MemQueue_Type);
+    if (o == NULL) {
+        return NULL;
+    }
+    if (memqueue_tp_init(o, NULL, NULL)) {
+        return NULL;
+    }
+    return o;
+}
 
 PyType_Slot MemQueue_TypeSlots[] = {
-    {Py_tp_methods, MemQueue_methods},
     {Py_tp_init, (initproc)memqueue_tp_init},
     {0, NULL},
 };

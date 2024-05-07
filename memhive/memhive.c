@@ -1,4 +1,6 @@
 #include "memhive.h"
+#include "module.h"
+#include "queue.h"
 
 
 static int
@@ -12,6 +14,10 @@ memhive_tp_init(MemHive *o, PyObject *args, PyObject *kwds)
     if (pthread_rwlock_init(&o->index_rwlock, NULL)) {
         Py_FatalError("Failed to initialize an RWLock");
     }
+
+    module_state *state = MemHive_GetModuleStateByPythonType(Py_TYPE(o));
+    o->in = NewMemQueue(state);
+    o->out = NewMemQueue(state);
 
     return 0;
 
@@ -162,8 +168,39 @@ MemHive_Get(module_state *calling_state, MemHive *hive, PyObject *key)
     return val;
 }
 
+static PyObject *
+memhive_py_put(MemHive *o, PyObject *borrowed_val)
+{
+    MemQueue *q = o->in;
+    return MemQueue_Put(q, borrowed_val);
+}
+
+static PyObject *
+memhive_py_get_proxy(MemHive *o, PyObject *args)
+{
+    module_state *state = MemHive_GetModuleStateByObj((PyObject*)o);
+    MemQueue *q = o->out;
+    return MemQueue_GetAndProxy(q, state);
+}
+
+static PyObject *
+memhive_py_close_subs_intake(MemHive *o, PyObject *args)
+{
+    int ret = MemQueue_Close(o->in);
+    assert(ret == 0);
+    Py_RETURN_NONE;
+}
+
+static PyMethodDef MemHive_methods[] = {
+    {"put_borrowed", (PyCFunction)memhive_py_put, METH_O, NULL},
+    {"get_proxied", (PyCFunction)memhive_py_get_proxy, METH_NOARGS, NULL},
+    {"close_subs_intake", (PyCFunction)memhive_py_close_subs_intake, METH_NOARGS, NULL},
+    {NULL, NULL}
+};
+
 
 PyType_Slot MemHive_TypeSlots[] = {
+    {Py_tp_methods, MemHive_methods},
     {Py_mp_length, (lenfunc)memhive_tp_len},
     {Py_mp_subscript, (binaryfunc)memhive_tp_subscript},
     {Py_mp_ass_subscript, (objobjargproc)memhive_tp_ass_sub},
@@ -173,9 +210,8 @@ PyType_Slot MemHive_TypeSlots[] = {
 };
 
 
-
 PyType_Spec MemHive_TypeSpec = {
-    .name = "memhive._MemHive",
+    .name = "_memhive._MemHive",
     .basicsize = sizeof(MemHive),
     .itemsize = 0,
     .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,

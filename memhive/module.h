@@ -21,8 +21,6 @@ typedef struct {
     PyTypeObject *BitmapNodeType;
     PyTypeObject *CollisionNodeType;
 
-    PyTypeObject *MemQueueType;
-
     PyTypeObject *MapItemsType;
     PyTypeObject *MapItemsIterType;
     PyTypeObject *MapValuesType;
@@ -32,12 +30,14 @@ typedef struct {
 
     PyTypeObject *MemHive_Type;
     PyTypeObject *MemHiveProxy_Type;
+    PyTypeObject *MemQueue_Type;
 
     struct ProxyDescriptor *proxy_desc_template;
 } module_state;
 
 module_state * MemHive_GetModuleState(PyObject *mod);
 module_state * MemHive_GetModuleStateByType(PyTypeObject *cls);
+module_state * MemHive_GetModuleStateByPythonType(PyTypeObject *cls);
 module_state * MemHive_GetModuleStateByObj(PyObject *obj);
 
 

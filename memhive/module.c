@@ -40,6 +40,17 @@ MemHive_GetModuleStateByType(PyTypeObject *cls)
 
 
 module_state *
+MemHive_GetModuleStateByPythonType(PyTypeObject *cls)
+{
+    PyObject *module = PyType_GetModuleByDef(cls, &memhive_module);
+    assert(module != NULL);
+    module_state *state = PyModule_GetState(module);
+    assert(state != NULL);
+    return state;
+}
+
+
+module_state *
 MemHive_GetModuleStateByObj(PyObject *obj)
 {
     module_state *state = PyType_GetModuleState(Py_TYPE(obj));
@@ -55,6 +66,8 @@ module_clear(PyObject *mod)
 
     Py_CLEAR(state->MemHive_Type);
     Py_CLEAR(state->MemHiveProxy_Type);
+
+    Py_CLEAR(state->MemQueue_Type);
 
     Py_CLEAR(state->MapType);
     Py_CLEAR(state->MapMutationType);
@@ -84,6 +97,8 @@ module_traverse(PyObject *mod, visitproc visit, void *arg)
 
     Py_VISIT(state->MemHive_Type);
     Py_VISIT(state->MemHiveProxy_Type);
+
+    Py_VISIT(state->MemQueue_Type);
 
     Py_VISIT(state->MapType);
     Py_VISIT(state->MapMutationType);
@@ -137,7 +152,7 @@ module_exec(PyObject *m)
     CREATE_TYPE(m, state->MemHive_Type, &MemHive_TypeSpec, NULL, 1);
     CREATE_TYPE(m, state->MemHiveProxy_Type, &MemHiveProxy_TypeSpec, NULL, 1);
 
-    CREATE_TYPE(m, state->MemQueueType, &MemQueue_TypeSpec, NULL, 1);
+    CREATE_TYPE(m, state->MemQueue_Type, &MemQueue_TypeSpec, NULL, 1);
 
     CREATE_TYPE(m, state->MapType, &Map_TypeSpec, NULL, 1);
     CREATE_TYPE(m, state->MapMutationType, &MapMutation_TypeSpec, NULL, 0);
