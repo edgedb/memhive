@@ -4,6 +4,7 @@
 #include "map.h"
 #include "memhive.h"
 #include "structmember.h"
+#include "module.h"
 
 
 /*
@@ -349,33 +350,6 @@ typedef struct {
     int32_t c_hash;
     PyObject *c_array[1];
 } MapNode_Collision;
-
-
-static module_state *
-get_module_state(PyObject *mod)
-{
-    module_state *state = PyModule_GetState(mod);
-    assert(state != NULL);
-    return state;
-}
-
-
-static inline module_state *
-get_module_state_by_type(PyTypeObject *cls)
-{
-    module_state *state = PyType_GetModuleState(cls);
-    assert(state != NULL);
-    return state;
-}
-
-
-static inline module_state *
-get_module_state_by_obj(PyObject *obj)
-{
-    module_state *state = PyType_GetModuleState(Py_TYPE(obj));
-    assert(state != NULL);
-    return state;
-}
 
 
 /* Create a new HAMT immutable mapping. */
@@ -2838,7 +2812,7 @@ map_baseiter_tp_iternext(MapIterator *it)
     PyObject *node;
     PyObject *key;
     PyObject *val;
-    module_state *state = get_module_state_by_obj((PyObject *)it);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)it);
     map_iter_t res = map_iterator_next(state, &it->mi_iter, &node, &key, &val);
 
     int need_copy = state->interpreter_id != ((MapNode *)node)->interpreter_id;
@@ -2915,7 +2889,7 @@ map_baseview_newiter(module_state *state,
 static PyObject *
 map_baseview_iter(MapView *view)
 {
-    module_state *state = get_module_state_by_obj((PyObject *)view);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)view);
     return map_baseview_newiter(
         state, view->mv_itertype, view->mv_yield, view->mv_obj);
 }
@@ -3158,7 +3132,7 @@ map_dump(module_state *state, MapObject *self);
 static PyObject *
 map_tp_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
-    module_state *state = get_module_state_by_type(type);
+    module_state *state = MemHive_GetModuleStateByType(type);
     return (PyObject*)map_new(state);
 }
 
@@ -3166,7 +3140,7 @@ map_tp_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 static int
 map_tp_init(MapObject *self, PyObject *args, PyObject *kwds)
 {
-    module_state *state = get_module_state_by_obj((PyObject *)self);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
     PyObject *arg = NULL;
     uint64_t mutid = 0;
 
@@ -3219,7 +3193,7 @@ map_tp_init(MapObject *self, PyObject *args, PyObject *kwds)
 static int
 map_tp_clear(BaseMapObject *self)
 {
-    module_state *state = get_module_state_by_obj((PyObject *)self);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
     MAYBE_CLEAR(state, self->b_root);
     return 0;
 }
@@ -3228,7 +3202,7 @@ map_tp_clear(BaseMapObject *self)
 static int
 map_tp_traverse(BaseMapObject *self, visitproc visit, void *arg)
 {
-    module_state *state = get_module_state_by_obj((PyObject *)self);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
     Py_VISIT(Py_TYPE(self));
     MAYBE_VISIT(state, self->b_root);
     return 0;
@@ -3249,7 +3223,7 @@ map_tp_dealloc(BaseMapObject *self)
 static PyObject *
 map_tp_richcompare(PyObject *v, PyObject *w, int op)
 {
-    module_state *state = get_module_state_by_obj(v);
+    module_state *state = MemHive_GetModuleStateByObj(v);
     if (!Map_Check(state, v) ||
         !Map_Check(state, w) ||
         (op != Py_EQ && op != Py_NE)
@@ -3278,7 +3252,7 @@ static int
 map_tp_contains(BaseMapObject *self, PyObject *key)
 {
     PyObject *val;
-    module_state *state = get_module_state_by_obj((PyObject *)self);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
 
     map_find_t res = map_find(state, self, key, &val);
     switch (res) {
@@ -3298,7 +3272,7 @@ static PyObject *
 map_tp_subscript(BaseMapObject *self, PyObject *key)
 {
     PyObject *val;
-    module_state *state = get_module_state_by_obj((PyObject *)self);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
 
     map_find_t res = map_find(state, self, key, &val);
 
@@ -3327,7 +3301,7 @@ map_tp_len(BaseMapObject *self)
 static PyObject *
 map_tp_iter(MapObject *self)
 {
-    module_state *state = get_module_state_by_obj((PyObject *)self);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
     return map_new_keys_iter(state, self);
 }
 
@@ -3336,7 +3310,7 @@ map_py_set(MapObject *self, PyObject *args)
 {
     PyObject *key;
     PyObject *val;
-    module_state *state = get_module_state_by_obj((PyObject *)self);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
 
     if (self->interpreter_id != state->interpreter_id) {
         PyErr_SetString(
@@ -3358,7 +3332,7 @@ map_py_get(BaseMapObject *self, PyObject *args)
     PyObject *key;
     PyObject *def = NULL;
 
-    module_state *state = get_module_state_by_obj((PyObject *)self);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
 
     if (!PyArg_UnpackTuple(args, "get", 1, 2, &key, &def)) {
         return NULL;
@@ -3388,14 +3362,14 @@ map_py_get(BaseMapObject *self, PyObject *args)
 static PyObject *
 map_py_delete(MapObject *self, PyObject *key)
 {
-    module_state *state = get_module_state_by_obj((PyObject *)self);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
     return (PyObject *)map_without(state, self, key);
 }
 
 static PyObject *
 map_py_mutate(MapObject *self, PyObject *args)
 {
-    module_state *state = get_module_state_by_obj((PyObject *)self);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
 
     MapMutationObject *o;
     o = PyObject_GC_New(MapMutationObject, state->MapMutationType);
@@ -3424,7 +3398,7 @@ map_py_update(MapObject *self, PyObject *args, PyObject *kwds)
     PyObject *arg = NULL;
     MapObject *new = NULL;
     uint64_t mutid = 0;
-    module_state *state = get_module_state_by_obj((PyObject *)self);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
 
     if (!PyArg_UnpackTuple(args, "update", 0, 1, &arg)) {
         return NULL;
@@ -3466,28 +3440,28 @@ map_py_update(MapObject *self, PyObject *args, PyObject *kwds)
 static PyObject *
 map_py_items(MapObject *self, PyObject *args)
 {
-    module_state *state = get_module_state_by_obj((PyObject *)self);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
     return map_new_items_view(state, self);
 }
 
 static PyObject *
 map_py_values(MapObject *self, PyObject *args)
 {
-    module_state *state = get_module_state_by_obj((PyObject *)self);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
     return map_new_values_view(state, self);
 }
 
 static PyObject *
 map_py_keys(MapObject *self, PyObject *args)
 {
-    module_state *state = get_module_state_by_obj((PyObject *)self);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
     return map_new_keys_view(state, self);
 }
 
 static PyObject *
 map_py_dump(MapObject *self, PyObject *args)
 {
-    module_state *state = get_module_state_by_obj((PyObject *)self);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
     return map_dump(state, self);
 }
 
@@ -3498,7 +3472,7 @@ map_py_repr(BaseMapObject *m)
     Py_ssize_t i;
     _PyUnicodeWriter writer;
 
-    module_state *state = get_module_state_by_obj((PyObject *)m);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)m);
 
 
     i = Py_ReprEnter((PyObject *)m);
@@ -3603,7 +3577,7 @@ map_py_hash(MapObject *self)
         return self->h_hash;
     }
 
-    module_state *state = get_module_state_by_obj((PyObject *)self);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
 
     Py_uhash_t hash = 0;
 
@@ -3654,7 +3628,7 @@ map_reduce(MapObject *self)
         return NULL;
     }
 
-    module_state *state = get_module_state_by_obj((PyObject *)self);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
 
     map_iterator_init(state, &iter, self->h_root);
     do {
@@ -4194,7 +4168,7 @@ mapmut_py_set(MapMutationObject *o, PyObject *args)
     PyObject *key;
     PyObject *val;
 
-    module_state *state = get_module_state_by_obj((PyObject *)o);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)o);
 
     if (!PyArg_UnpackTuple(args, "set", 2, 2, &key, &val)) {
         return NULL;
@@ -4219,7 +4193,7 @@ mapmut_py_set(MapMutationObject *o, PyObject *args)
 static PyObject *
 mapmut_tp_richcompare(PyObject *v, PyObject *w, int op)
 {
-    module_state *state = get_module_state_by_obj(v);
+    module_state *state = MemHive_GetModuleStateByObj(v);
     if (!MapMutation_Check(state, v) || !MapMutation_Check(state, w) ||
             (op != Py_EQ && op != Py_NE))
     {
@@ -4247,7 +4221,7 @@ static PyObject *
 mapmut_py_update(MapMutationObject *self, PyObject *args, PyObject *kwds)
 {
     PyObject *arg = NULL;
-    module_state *state = get_module_state_by_obj((PyObject *)self);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
 
     if (!PyArg_UnpackTuple(args, "update", 0, 1, &arg)) {
         return NULL;
@@ -4284,7 +4258,7 @@ mapmut_py_update(MapMutationObject *self, PyObject *args, PyObject *kwds)
 static PyObject *
 mapmut_py_finish(MapMutationObject *self, PyObject *args)
 {
-    module_state *state = get_module_state_by_obj((PyObject *)self);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
 
     if (mapmut_finish(self)) {
         return NULL;
@@ -4321,7 +4295,7 @@ mapmut_py_exit(MapMutationObject *self, PyObject *args)
 static int
 mapmut_tp_ass_sub(MapMutationObject *self, PyObject *key, PyObject *val)
 {
-    module_state *state = get_module_state_by_obj((PyObject *)self);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
 
     if (mapmut_check_finalized(self)) {
         return -1;
@@ -4344,7 +4318,7 @@ static PyObject *
 mapmut_py_pop(MapMutationObject *self, PyObject *args)
 {
     PyObject *key, *deflt = NULL, *val = NULL;
-    module_state *state = get_module_state_by_obj((PyObject *)self);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
 
     if(!PyArg_UnpackTuple(args, "pop", 1, 2, &key, &deflt)) {
         return NULL;

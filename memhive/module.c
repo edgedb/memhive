@@ -1,4 +1,5 @@
 #include "memhive.h"
+#include "queue.h"
 #include "map.h"
 
 
@@ -20,10 +21,28 @@ static PyMethodDef module_methods[] = {
 };
 
 
-static module_state *
-get_module_state(PyObject *mod)
+module_state *
+MemHive_GetModuleState(PyObject *mod)
 {
     module_state *state = PyModule_GetState(mod);
+    assert(state != NULL);
+    return state;
+}
+
+
+module_state *
+MemHive_GetModuleStateByType(PyTypeObject *cls)
+{
+    module_state *state = PyType_GetModuleState(cls);
+    assert(state != NULL);
+    return state;
+}
+
+
+module_state *
+MemHive_GetModuleStateByObj(PyObject *obj)
+{
+    module_state *state = PyType_GetModuleState(Py_TYPE(obj));
     assert(state != NULL);
     return state;
 }
@@ -61,7 +80,7 @@ module_clear(PyObject *mod)
 static int
 module_traverse(PyObject *mod, visitproc visit, void *arg)
 {
-    module_state *state = get_module_state(mod);
+    module_state *state = MemHive_GetModuleState(mod);
 
     Py_VISIT(state->MemHive_Type);
     Py_VISIT(state->MemHiveProxy_Type);
@@ -101,7 +120,7 @@ static struct PyModuleDef memhive_module = {
 static int
 module_exec(PyObject *m)
 {
-    module_state *state = get_module_state(m);
+    module_state *state = MemHive_GetModuleState(m);
 
     #define CREATE_TYPE(mod, tp, spec, base, exp)                       \
     do {                                                                \
@@ -117,6 +136,8 @@ module_exec(PyObject *m)
 
     CREATE_TYPE(m, state->MemHive_Type, &MemHive_TypeSpec, NULL, 1);
     CREATE_TYPE(m, state->MemHiveProxy_Type, &MemHiveProxy_TypeSpec, NULL, 1);
+
+    CREATE_TYPE(m, state->MemQueueType, &MemQueue_TypeSpec, NULL, 1);
 
     CREATE_TYPE(m, state->MapType, &Map_TypeSpec, NULL, 1);
     CREATE_TYPE(m, state->MapMutationType, &MapMutation_TypeSpec, NULL, 0);

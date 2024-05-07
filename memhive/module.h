@@ -1,6 +1,9 @@
 #ifndef MEMHIVE_MODULE_H
 #define MEMHIVE_MODULE_H
 
+#include "Python.h"
+#include <stdint.h>
+
 
 struct ProxyDescriptor;
 
@@ -18,6 +21,8 @@ typedef struct {
     PyTypeObject *BitmapNodeType;
     PyTypeObject *CollisionNodeType;
 
+    PyTypeObject *MemQueueType;
+
     PyTypeObject *MapItemsType;
     PyTypeObject *MapItemsIterType;
     PyTypeObject *MapValuesType;
@@ -31,5 +36,9 @@ typedef struct {
     struct ProxyDescriptor *proxy_desc_template;
 } module_state;
 
-#include "module.h"
+module_state * MemHive_GetModuleState(PyObject *mod);
+module_state * MemHive_GetModuleStateByType(PyTypeObject *cls);
+module_state * MemHive_GetModuleStateByObj(PyObject *obj);
+
+
 #endif

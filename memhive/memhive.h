@@ -14,6 +14,7 @@
 #include "map.h"
 #include "proxy.h"
 #include "module.h"
+#include "utils.h"
 
 
 // Safe to use on pointers from other subinterpreters as they only
@@ -25,11 +26,6 @@
 
 // We want to minimize
 #define MEMHIVE_IS_VALID_KEY(op)    PyUnicode_Check(op)
-
-
-// A type alias for PyObject* pointers to objects owned by a different
-// sub-interpreter.
-typedef PyObject DistantPyObject;
 
 
 typedef struct {
@@ -68,9 +64,6 @@ extern PyType_Spec MemHiveProxy_TypeSpec;
 
 struct MapNode *
 _map_node_bitmap_new(module_state *state, Py_ssize_t size, uint64_t mutid);
-
-
-PyObject * MemHive_CopyObject(module_state *, DistantPyObject *);
 
 
 // MemHive objects API, every method is safe to call from

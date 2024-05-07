@@ -58,6 +58,7 @@ if platform.python_implementation() == 'CPython':
         setuptools.Extension(
             "memhive._memhive",
             [
+                "memhive/queue.c",
                 "memhive/module.c",
                 "memhive/memhive.c",
                 "memhive/otherside.c",
