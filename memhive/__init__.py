@@ -17,6 +17,7 @@ import _xxsubinterpreters as subint
 from ._memhive import _MemHive
 from ._memhive import Map
 from ._memhive import _MemQueue
+from ._memhive import ClosedQueueError
 
 
 class _Mem(_MemHive):
@@ -95,11 +96,14 @@ class Executor:
             code = textwrap.dedent('''\
             import sys
             import marshal, types
+            import threading
             sys.path = ''' + repr(sys.path) + '''
 
+            from memhive._memhive import ClosedQueueError
             from memhive._memhive import _MemHiveProxy
             mem = _MemHiveProxy(''' + repr(id(self._mem)) + ''')
 
+            bin = []
             try:
                 while True:
                     p = mem.get_proxied()
@@ -109,19 +113,25 @@ class Executor:
                     func = types.FunctionType(func_code, globals(), func_name)
 
                     ret = (idx, func(*args))
-                    print('>>>', ret)
+                    bin.append(ret) # xxx
                     mem.put_borrowed(ret)
-                    old_p = p
-            except Exception as ex:
-                print('TTTTTE', ex)
-
+                    bin.append(p) # xxx
+            except ClosedQueueError:
+                pass
+            finally:
+                # xxx
+                bin.clear()
+                import gc
+                gc.collect()
+                gc.collect()
+                gc.collect()
             \n''')
 
             sub = subint.create(isolated=True)
             try:
                 subint.run_string(sub, code)
             except Exception as ex:
-                print('!!-1', type(ex), '|', ex)
+                print('Unhandled error in a subinterpreter', type(ex), ex)
                 raise
             finally:
                 subint.destroy(sub)
@@ -133,6 +143,7 @@ class Executor:
     def map(self, argss, func):
         payloads = []
 
+        res = {}
         for i, args in enumerate(argss):
             p = (
                 i,
@@ -140,13 +151,16 @@ class Executor:
                 marshal.dumps(func.__code__),
                 args
             )
+            res[i] = None
             self._mem.put_borrowed(p)
             payloads.append(p)
 
         try:
             for _ in range(len(argss)):
                 ret = self._mem.get_proxied()
-                print('RESULT', ret)
+                res[ret[0]] = ret[1]
+
+            return list(res.values())
 
         except KeyboardInterrupt:
             try:

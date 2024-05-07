@@ -6,10 +6,6 @@ MemHive_CopyObject(module_state *calling_state, DistantPyObject *o)
 {
     assert(o != NULL);
 
-    printf("---\n");
-    PyObject_Print(o, stdout, 0);
-    printf("===\n");
-
     if (o == Py_None || o == Py_True || o == Py_False || o == Py_Ellipsis) {
         // Well-known C-defined singletons are shared between
         // sub-interpreters.
@@ -65,15 +61,25 @@ MemHive_CopyObject(module_state *calling_state, DistantPyObject *o)
     } else if (MEMHIVE_IS_PROXYABLE(o)) {
         module_unaryfunc copy = ((ProxyableObject*)o)->proxy_desc->make_proxy;
         return (*copy)(calling_state, o);
-    } if (PyTuple_CheckExact(o)) {
-        PyObject *t = PyTuple_New(Py_SIZE(o));
-        for (Py_ssize_t i = 0; i < Py_SIZE(o); i++) {
-            PyTuple_SetItem(t, i, MemHive_CopyObject(
-                calling_state, PyTuple_GetItem(o, i)
-            ));
+    } else if (PyTuple_CheckExact(o)) {
+        PyObject *t = PyTuple_New(PyTuple_Size(o));
+        if (t == NULL) {
+            return NULL;
+        }
+        for (Py_ssize_t i = 0; i < PyTuple_Size(o); i++) {
+            PyObject *el = PyTuple_GetItem(o, i);
+            assert(el != NULL);
+            PyObject *oo = MemHive_CopyObject(calling_state, el);
+            if (oo == NULL) {
+                return NULL;
+            }
+            PyTuple_SetItem(t, i, oo);
         }
         return t;
     } else {
+        // printf("fail\n");
+        // PyObject_Print(Py_TYPE(o), stdout, 0);
+        // printf("fail\n");
         PyErr_SetString(PyExc_ValueError,
                         "cannot copy an object from another interpreter");
         return NULL;

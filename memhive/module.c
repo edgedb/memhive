@@ -64,6 +64,8 @@ module_clear(PyObject *mod)
 {
     module_state *state = PyModule_GetState(mod);
 
+    Py_CLEAR(state->ClosedQueueError);
+
     Py_CLEAR(state->MemHive_Type);
     Py_CLEAR(state->MemHiveProxy_Type);
 
@@ -94,6 +96,8 @@ static int
 module_traverse(PyObject *mod, visitproc visit, void *arg)
 {
     module_state *state = MemHive_GetModuleState(mod);
+
+    Py_VISIT(state->ClosedQueueError);
 
     Py_VISIT(state->MemHive_Type);
     Py_VISIT(state->MemHiveProxy_Type);
@@ -148,6 +152,19 @@ module_exec(PyObject *m)
             return -1;                                                  \
         }                                                               \
     } while (0)
+
+    #define CREATE_EXC(mod, tp, name, base, exp)                        \
+    do {                                                                \
+        tp = PyErr_NewException("memhive." name, base, NULL);           \
+        if (tp == NULL) {                                               \
+            return -1;                                                  \
+        }                                                               \
+        if (exp && PyModule_AddObjectRef(mod, name, tp) < 0) {          \
+            return -1;                                                  \
+        }                                                               \
+    } while (0)
+
+    CREATE_EXC(m, state->ClosedQueueError, "ClosedQueueError", PyExc_Exception, 1);
 
     CREATE_TYPE(m, state->MemHive_Type, &MemHive_TypeSpec, NULL, 1);
     CREATE_TYPE(m, state->MemHiveProxy_Type, &MemHiveProxy_TypeSpec, NULL, 1);

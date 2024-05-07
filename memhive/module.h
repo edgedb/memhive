@@ -14,6 +14,8 @@ typedef struct {
     PyObject *empty_bitmap_node;
     uint64_t mutid_counter;
 
+    PyObject *ClosedQueueError;
+
     PyTypeObject *MapType;
     PyTypeObject *MapMutationType;
 

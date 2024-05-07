@@ -70,7 +70,7 @@ MemQueue_Put(MemQueue *queue, PyObject *borrowed_val)
 }
 
 static PyObject *
-memqueue_get(MemQueue *queue)
+memqueue_get(MemQueue *queue, module_state *state)
 {
     Py_BEGIN_ALLOW_THREADS
     pthread_mutex_lock(&queue->mut);
@@ -90,7 +90,7 @@ memqueue_get(MemQueue *queue)
 
     if (queue->closed == 1) {
         pthread_mutex_unlock(&queue->mut);
-        PyErr_SetString(PyExc_ValueError,
+        PyErr_SetString(state->ClosedQueueError,
                         "can't get, the queue is closed");
         return NULL;
     }
@@ -114,7 +114,7 @@ memqueue_get(MemQueue *queue)
 PyObject *
 MemQueue_GetAndProxy(MemQueue *queue, module_state *state)
 {
-    PyObject *borrowed = memqueue_get(queue);
+    PyObject *borrowed = memqueue_get(queue, state);
     if (borrowed == NULL) {
         return NULL;
     }
