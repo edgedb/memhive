@@ -5,7 +5,8 @@ struct item {
     // A borrowed ref; the lifetime will have to be managed
     // outside. `item` objects should be free-able from other
     // threads as they "pop" them from the queue.
-    PyObject *borrowed_val;
+    PyObject *val;
+    PyObject *sender;
     struct item *next;
 };
 
@@ -28,7 +29,7 @@ memqueue_tp_init(MemQueue *o, PyObject *args, PyObject *kwds)
 }
 
 PyObject *
-MemQueue_Put(MemQueue *queue, PyObject *borrowed_val)
+MemQueue_Put(MemQueue *queue, PyObject *sender, PyObject *val)
 {
     // OK to read `queue->closed` without the lock as only
     // the owner thread can set it.
@@ -49,7 +50,12 @@ MemQueue_Put(MemQueue *queue, PyObject *borrowed_val)
     pthread_mutex_lock(&queue->mut);
     Py_END_ALLOW_THREADS
 
-    i->borrowed_val = borrowed_val;
+    i->val = val;           // it's the responsibility of the caller to manage
+                            // the refcount for this
+
+    i->sender = sender;     // borrow; we don't care, the lifetime of sender is
+                            // greater than of this queue
+
     i->next = NULL;
     if (queue->last == NULL) {
         queue->last = i;
@@ -69,8 +75,8 @@ MemQueue_Put(MemQueue *queue, PyObject *borrowed_val)
     Py_RETURN_NONE;
 }
 
-static PyObject *
-memqueue_get(MemQueue *queue, module_state *state)
+int
+MemQueue_Get(MemQueue *queue, module_state *state, PyObject **sender, PyObject **val)
 {
     Py_BEGIN_ALLOW_THREADS
     pthread_mutex_lock(&queue->mut);
@@ -84,7 +90,7 @@ memqueue_get(MemQueue *queue, module_state *state)
             queue->closed = 1;
             pthread_cond_broadcast(&queue->cond);
             pthread_mutex_unlock(&queue->mut);
-            return NULL;
+            return -1;
         }
     }
 
@@ -92,11 +98,13 @@ memqueue_get(MemQueue *queue, module_state *state)
         pthread_mutex_unlock(&queue->mut);
         PyErr_SetString(state->ClosedQueueError,
                         "can't get, the queue is closed");
-        return NULL;
+        return -1;
     }
 
     struct item *prev_first = queue->first;
-    PyObject *borrowed_val = prev_first->borrowed_val;
+    *val = prev_first->val;
+    *sender = prev_first->sender;
+
     queue->first = prev_first->next;
     queue->length--;
 
@@ -108,17 +116,7 @@ memqueue_get(MemQueue *queue, module_state *state)
     free(prev_first);
     pthread_mutex_unlock(&queue->mut);
 
-    return borrowed_val;
-}
-
-PyObject *
-MemQueue_GetAndProxy(MemQueue *queue, module_state *state)
-{
-    PyObject *borrowed = memqueue_get(queue, state);
-    if (borrowed == NULL) {
-        return NULL;
-    }
-    return MemHive_CopyObject(state, borrowed);
+    return 0;
 }
 
 int

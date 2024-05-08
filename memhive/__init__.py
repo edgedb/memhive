@@ -124,31 +124,25 @@ class Executor:
             refs_thread = threading.Thread(target=do_refs)
             refs_thread.start()
 
-            bin = []
             try:
                 while True:
-                    p = mem.get_proxied()
+                    p = mem.get()
+
+                    mem.do_refs() # debug
+
                     idx, func_name, func_code, args = p
 
                     func_code = marshal.loads(func_code)
                     func = types.FunctionType(func_code, globals(), func_name)
 
                     ret = (idx, func(*args))
-                    bin.append(ret) # xxx
-                    mem.put_borrowed(ret)
-                    bin.append(p) # xxx
+                    mem.put(ret)
             except ClosedQueueError:
                 pass
             finally:
                 closed = True
                 refs_thread.join()
-
-                # xxx
-                bin.clear()
-                import gc
-                gc.collect()
-                gc.collect()
-                gc.collect()
+                mem.do_refs()
             \n''')
 
             sub = subint.create(isolated=True)
@@ -176,12 +170,13 @@ class Executor:
                 args
             )
             res[i] = None
-            self._mem.put_borrowed(p)
+            self._mem.put(p)
             payloads.append(p)
 
         try:
+            self._mem.do_refs() # debug
             for _ in range(len(argss)):
-                ret = self._mem.get_proxied()
+                ret = self._mem.get()
                 res[ret[0]] = ret[1]
 
             return list(res.values())
@@ -193,8 +188,10 @@ class Executor:
                 raise
 
     def close(self):
+        self._mem.do_refs()
         self._mem.close_subs_intake()
         for t in self._workers:
             t.join()
         self._workers = []
         self._refs_thread.join()
+        self._mem.do_refs()  # XXX this one might be way too late

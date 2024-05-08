@@ -24,10 +24,10 @@ typedef struct {
 extern PyType_Spec MemQueue_TypeSpec;
 
 PyObject *
-MemQueue_Put(MemQueue *queue, PyObject *borrowed_val);
+MemQueue_Put(MemQueue *queue, PyObject *sender, PyObject *val);
 
-PyObject *
-MemQueue_GetAndProxy(MemQueue *queue, module_state *calling_state);
+int
+MemQueue_Get(MemQueue *queue, module_state *state, PyObject **sender, PyObject **val);
 
 MemQueue *
 NewMemQueue(module_state *calling_state);

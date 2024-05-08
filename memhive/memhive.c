@@ -203,18 +203,30 @@ MemHive_Get(module_state *calling_state, MemHive *hive, PyObject *key)
 }
 
 static PyObject *
-memhive_py_put(MemHive *o, PyObject *borrowed_val)
+memhive_py_put(MemHive *o, PyObject *val)
 {
     MemQueue *q = o->in;
-    return MemQueue_Put(q, borrowed_val);
+    Py_INCREF(val);
+    return MemQueue_Put(q, (PyObject*)o, val);
 }
 
 static PyObject *
-memhive_py_get_proxy(MemHive *o, PyObject *args)
+memhive_py_get(MemHive *o, PyObject *args)
 {
     module_state *state = MemHive_GetModuleStateByObj((PyObject*)o);
     MemQueue *q = o->out;
-    return MemQueue_GetAndProxy(q, state);
+
+    PyObject *sender;
+    PyObject *remote_val;
+    if (MemQueue_Get(q, state, &sender, &remote_val)) {
+        return NULL;
+    }
+
+    if (MemHive_RefQueue_Dec(((MemHiveSub*)sender)->subs_refs, remote_val)) {
+        return NULL;
+    }
+
+    return MemHive_CopyObject(state, remote_val);
 }
 
 static PyObject *
@@ -246,8 +258,8 @@ memhive_py_do_refs(MemHive *o, PyObject *args)
 
 
 static PyMethodDef MemHive_methods[] = {
-    {"put_borrowed", (PyCFunction)memhive_py_put, METH_O, NULL},
-    {"get_proxied", (PyCFunction)memhive_py_get_proxy, METH_NOARGS, NULL},
+    {"put", (PyCFunction)memhive_py_put, METH_O, NULL},
+    {"get", (PyCFunction)memhive_py_get, METH_NOARGS, NULL},
     {"close_subs_intake", (PyCFunction)memhive_py_close_subs_intake, METH_NOARGS, NULL},
     {"do_refs", (PyCFunction)memhive_py_do_refs, METH_NOARGS, NULL},
     {NULL, NULL}
