@@ -186,9 +186,7 @@ module_exec(PyObject *m)
     CREATE_TYPE(m, state->MapValuesIterType, &MapValuesIter_TypeSpec, NULL, 0);
     CREATE_TYPE(m, state->MapItemsIterType, &MapItemsIter_TypeSpec, NULL, 0);
 
-    PyThreadState *tstate = PyThreadState_Get();
-    assert(tstate != NULL);
-    PyInterpreterState *interp = PyThreadState_GetInterpreter(tstate);
+    PyInterpreterState *interp = PyInterpreterState_Get();
     assert(interp != NULL);
     state->interpreter_id = PyInterpreterState_GetID(interp);
 
