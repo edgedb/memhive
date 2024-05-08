@@ -225,10 +225,31 @@ memhive_py_close_subs_intake(MemHive *o, PyObject *args)
     Py_RETURN_NONE;
 }
 
+static PyObject *
+memhive_py_do_refs(MemHive *o, PyObject *args)
+{
+    pthread_mutex_lock(&o->subs_list_mut);
+
+    SubsList *lst = o->subs_list;
+    while (lst != NULL) {
+        if (MemHive_RefQueue_Run(lst->sub->main_refs)) {
+            pthread_mutex_unlock(&o->subs_list_mut);
+            return NULL;
+        }
+        lst = lst->next;
+    }
+
+    pthread_mutex_unlock(&o->subs_list_mut);
+
+    Py_RETURN_NONE;
+}
+
+
 static PyMethodDef MemHive_methods[] = {
     {"put_borrowed", (PyCFunction)memhive_py_put, METH_O, NULL},
     {"get_proxied", (PyCFunction)memhive_py_get_proxy, METH_NOARGS, NULL},
     {"close_subs_intake", (PyCFunction)memhive_py_close_subs_intake, METH_NOARGS, NULL},
+    {"do_refs", (PyCFunction)memhive_py_do_refs, METH_NOARGS, NULL},
     {NULL, NULL}
 };
 

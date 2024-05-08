@@ -8,8 +8,10 @@ else:
     raise RuntimeError('memhive is not compatible with Stackless.')
 
 
+import random
 import sys
 import textwrap
+import time
 import threading
 import marshal
 import _xxsubinterpreters as subint
@@ -91,17 +93,36 @@ class Executor:
         for _ in range(self._nworkers):
             self._make_sub()
 
+        self._refs_thread = threading.Thread(target=self._do_refs)
+        self._refs_thread.start()
+
+    def _do_refs(self):
+        while self._workers:
+            self._mem.do_refs()
+            time.sleep(random.random() / 20.)
+
     def _make_sub(self):
         def runner():
             code = textwrap.dedent('''\
             import sys
             import marshal, types
+            import time
             import threading
+            import random
             sys.path = ''' + repr(sys.path) + '''
 
             from memhive._memhive import ClosedQueueError
             from memhive._memhive import _MemHiveSub
             mem = _MemHiveSub(''' + repr(id(self._mem)) + ''')
+
+            closed = False
+            def do_refs():
+                while not closed:
+                    mem.do_refs()
+                    time.sleep(random.random() / 20.)
+
+            refs_thread = threading.Thread(target=do_refs)
+            refs_thread.start()
 
             bin = []
             try:
@@ -119,6 +140,9 @@ class Executor:
             except ClosedQueueError:
                 pass
             finally:
+                closed = True
+                refs_thread.join()
+
                 # xxx
                 bin.clear()
                 import gc
@@ -173,3 +197,4 @@ class Executor:
         for t in self._workers:
             t.join()
         self._workers = []
+        self._refs_thread.join()

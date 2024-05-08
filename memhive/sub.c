@@ -14,6 +14,16 @@ memhive_sub_tp_init(MemHiveSub *o, PyObject *args, PyObject *kwds)
     o->hive = (DistantPyObject*)hive_ptr;
     MemHive_RegisterSub((MemHive*)o->hive, o);
 
+    o->main_refs = MemHive_RefQueue_New();
+    if (o->main_refs == NULL) {
+        return -1;
+    }
+
+    o->subs_refs = MemHive_RefQueue_New();
+    if (o->subs_refs == NULL) {
+        return -1;
+    }
+
     return 0;
 }
 
@@ -56,9 +66,20 @@ memhive_sub_py_get_proxy(MemHiveSub *o, PyObject *args)
 }
 
 
+static PyObject *
+memhive_sub_py_do_refs(MemHiveSub *o, PyObject *args)
+{
+    if (MemHive_RefQueue_Run(o->subs_refs)) {
+        return NULL;
+    }
+    Py_RETURN_NONE;
+}
+
+
 static PyMethodDef MemHiveSub_methods[] = {
     {"put_borrowed", (PyCFunction)memhive_sub_py_put, METH_O, NULL},
     {"get_proxied", (PyCFunction)memhive_sub_py_get_proxy, METH_NOARGS, NULL},
+    {"do_refs", (PyCFunction)memhive_sub_py_do_refs, METH_NOARGS, NULL},
     {NULL, NULL}
 };
 

@@ -16,6 +16,7 @@
 #include "module.h"
 #include "utils.h"
 #include "queue.h"
+#include "refqueue.h"
 
 
 // Safe to use on pointers from other subinterpreters as they only
@@ -33,6 +34,9 @@ typedef struct {
     PyObject_HEAD
 
     DistantPyObject *hive;
+
+    RefQueue *main_refs;
+    RefQueue *subs_refs;
 } MemHiveSub;
 
 
