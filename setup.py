@@ -61,7 +61,7 @@ if platform.python_implementation() == 'CPython':
                 "memhive/queue.c",
                 "memhive/module.c",
                 "memhive/memhive.c",
-                "memhive/otherside.c",
+                "memhive/sub.c",
                 "memhive/utils.c",
                 "memhive/map.c",
             ],

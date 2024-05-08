@@ -19,11 +19,36 @@ memhive_tp_init(MemHive *o, PyObject *args, PyObject *kwds)
     o->in = NewMemQueue(state);
     o->out = NewMemQueue(state);
 
+    o->subs_list = NULL;
+    if (pthread_mutex_init(&o->subs_list_mut, NULL)) {
+        Py_FatalError("Failed to initialize a mutex");
+    }
+
     return 0;
 
 err:
     Py_CLEAR(o->index);
     return -1;
+}
+
+int
+MemHive_RegisterSub(MemHive *hive, MemHiveSub *sub) {
+    SubsList *cnt = malloc(sizeof (SubsList));
+    if (cnt == NULL) {
+        PyErr_NoMemory();
+        return -1;
+    }
+    cnt->sub = sub;
+    cnt->next = NULL;
+    pthread_mutex_lock(&hive->subs_list_mut);
+    if (hive->subs_list == NULL) {
+        hive->subs_list = cnt;
+    } else {
+        cnt->next = hive->subs_list;
+        hive->subs_list = cnt;
+    }
+    pthread_mutex_unlock(&hive->subs_list_mut);
+    return 0;
 }
 
 
@@ -43,6 +68,15 @@ memhive_tp_dealloc(MemHive *o)
     if (pthread_rwlock_destroy(&o->index_rwlock)) {
         Py_FatalError("Failed to destroy the MemHive index lock");
     }
+
+    pthread_mutex_destroy(&o->subs_list_mut);
+    SubsList *l = o->subs_list;
+    while (l != NULL) {
+        SubsList *next = l->next;
+        free(l);
+        l = next;
+    }
+    o->subs_list = NULL;
 
     PyObject_Del(o);
 }

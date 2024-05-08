@@ -57,8 +57,8 @@ class MemHiveContext:
             import sys
             sys.path = ''' + repr(sys.path) + '''
 
-            from memhive._memhive import _MemHiveProxy
-            mem = _MemHiveProxy(''' + repr(id(self._mem)) + ''')
+            from memhive._memhive import _MemHiveSub
+            mem = _MemHiveSub(''' + repr(id(self._mem)) + ''')
             \n''') + code
 
             sub = subint.create(isolated=True)
@@ -100,8 +100,8 @@ class Executor:
             sys.path = ''' + repr(sys.path) + '''
 
             from memhive._memhive import ClosedQueueError
-            from memhive._memhive import _MemHiveProxy
-            mem = _MemHiveProxy(''' + repr(id(self._mem)) + ''')
+            from memhive._memhive import _MemHiveSub
+            mem = _MemHiveSub(''' + repr(id(self._mem)) + ''')
 
             bin = []
             try:

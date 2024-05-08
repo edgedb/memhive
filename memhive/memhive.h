@@ -32,6 +32,19 @@
 typedef struct {
     PyObject_HEAD
 
+    DistantPyObject *hive;
+} MemHiveSub;
+
+
+typedef struct sl {
+    MemHiveSub *sub;
+    struct sl *next;
+} SubsList;
+
+
+typedef struct {
+    PyObject_HEAD
+
     pthread_rwlock_t index_rwlock;
 
     // We're going to use a Python dict for the index, which is
@@ -53,18 +66,15 @@ typedef struct {
 
     MemQueue *in;
     MemQueue *out;
+
+    SubsList *subs_list;
+    pthread_mutex_t subs_list_mut;
 } MemHive;
 
 extern PyType_Spec MemHive_TypeSpec;
 
 
-typedef struct {
-    PyObject_HEAD
-
-    DistantPyObject *hive;
-} MemHiveProxy;
-
-extern PyType_Spec MemHiveProxy_TypeSpec;
+extern PyType_Spec MemHiveSub_TypeSpec;
 
 struct MapNode *
 _map_node_bitmap_new(module_state *state, Py_ssize_t size, uint64_t mutid);
@@ -80,6 +90,8 @@ Py_ssize_t MemHive_Len(
 // The value will be safe to use in the calling subinterpreter.
 PyObject * MemHive_Get(
     module_state *calling_state, MemHive *hive, PyObject *key);
+
+int MemHive_RegisterSub(MemHive *hive, MemHiveSub *sub);
 
 
 #endif

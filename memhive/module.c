@@ -67,7 +67,7 @@ module_clear(PyObject *mod)
     Py_CLEAR(state->ClosedQueueError);
 
     Py_CLEAR(state->MemHive_Type);
-    Py_CLEAR(state->MemHiveProxy_Type);
+    Py_CLEAR(state->MemHiveSub_Type);
 
     Py_CLEAR(state->MemQueue_Type);
 
@@ -100,7 +100,7 @@ module_traverse(PyObject *mod, visitproc visit, void *arg)
     Py_VISIT(state->ClosedQueueError);
 
     Py_VISIT(state->MemHive_Type);
-    Py_VISIT(state->MemHiveProxy_Type);
+    Py_VISIT(state->MemHiveSub_Type);
 
     Py_VISIT(state->MemQueue_Type);
 
@@ -167,7 +167,7 @@ module_exec(PyObject *m)
     CREATE_EXC(m, state->ClosedQueueError, "ClosedQueueError", PyExc_Exception, 1);
 
     CREATE_TYPE(m, state->MemHive_Type, &MemHive_TypeSpec, NULL, 1);
-    CREATE_TYPE(m, state->MemHiveProxy_Type, &MemHiveProxy_TypeSpec, NULL, 1);
+    CREATE_TYPE(m, state->MemHiveSub_Type, &MemHiveSub_TypeSpec, NULL, 1);
 
     CREATE_TYPE(m, state->MemQueue_Type, &MemQueue_TypeSpec, NULL, 1);
 

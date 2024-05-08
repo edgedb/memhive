@@ -31,7 +31,7 @@ typedef struct {
     PyTypeObject *MapKeysIterType;
 
     PyTypeObject *MemHive_Type;
-    PyTypeObject *MemHiveProxy_Type;
+    PyTypeObject *MemHiveSub_Type;
     PyTypeObject *MemQueue_Type;
 
     struct ProxyDescriptor *proxy_desc_template;
