@@ -86,20 +86,12 @@ class MemHiveContext:
 
 
 class Executor:
-    def __init__(self, *, nworkers: int=4):
+    def __init__(self, *, nworkers: int=8):
         self._mem = _MemHive()
         self._nworkers = nworkers
         self._workers = []
         for _ in range(self._nworkers):
             self._make_sub()
-
-        self._refs_thread = threading.Thread(target=self._do_refs)
-        self._refs_thread.start()
-
-    def _do_refs(self):
-        while self._workers:
-            self._mem.do_refs()
-            time.sleep(random.random() / 20.)
 
     def _make_sub(self):
         def runner():
@@ -115,20 +107,11 @@ class Executor:
             from memhive._memhive import _MemHiveSub
             mem = _MemHiveSub(''' + repr(id(self._mem)) + ''')
 
-            closed = False
-            def do_refs():
-                while not closed:
-                    mem.do_refs()
-                    time.sleep(random.random() / 20.)
-
-            refs_thread = threading.Thread(target=do_refs)
-            refs_thread.start()
-
             try:
                 while True:
-                    p = mem.get()
+                    mem.do_refs()
 
-                    mem.do_refs() # debug
+                    p = mem.get()
 
                     idx, func_name, func_code, args = p
 
@@ -139,10 +122,6 @@ class Executor:
                     mem.put(ret)
             except ClosedQueueError:
                 pass
-            finally:
-                closed = True
-                refs_thread.join()
-                mem.do_refs()
             \n''')
 
             sub = subint.create(isolated=True)
@@ -161,6 +140,8 @@ class Executor:
     def map(self, argss, func):
         payloads = []
 
+        self._mem.do_refs()
+
         res = {}
         for i, args in enumerate(argss):
             p = (
@@ -174,7 +155,6 @@ class Executor:
             payloads.append(p)
 
         try:
-            self._mem.do_refs() # debug
             for _ in range(len(argss)):
                 ret = self._mem.get()
                 res[ret[0]] = ret[1]
@@ -187,11 +167,12 @@ class Executor:
             finally:
                 raise
 
+        finally:
+            self._mem.do_refs()
+
     def close(self):
         self._mem.do_refs()
         self._mem.close_subs_intake()
         for t in self._workers:
             t.join()
         self._workers = []
-        self._refs_thread.join()
-        self._mem.do_refs()  # XXX this one might be way too late
