@@ -1673,8 +1673,6 @@ map_node_bitmap_traverse(MapNode_Bitmap *self, visitproc visit, void *arg)
 static void
 map_node_bitmap_dealloc(MapNode_Bitmap *self)
 {
-    /* Bitmap's tp_dealloc */
-
     PyTypeObject *tp = Py_TYPE(self);
     module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
 
@@ -2294,7 +2292,7 @@ map_node_array_assoc(module_state *state,
             /* Copy all elements from the current Array node to the
                new one. */
             for (i = 0; i < HAMT_ARRAY_NODE_SIZE; i++) {
-                XINCREF(state, self->a_array[i]);
+                NODE_XINCREF(state, self->a_array[i]);
                 new_node->a_array[i] = self->a_array[i];
             }
         }
@@ -2555,6 +2553,8 @@ map_node_array_dealloc(MapNode_Array *self)
 {
     /* Array's tp_dealloc */
 
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
+
     PyTypeObject *tp = Py_TYPE(self);
 
     Py_ssize_t i;
@@ -2563,7 +2563,7 @@ map_node_array_dealloc(MapNode_Array *self)
     Py_TRASHCAN_BEGIN(self, map_node_array_dealloc)
 
     for (i = 0; i < HAMT_ARRAY_NODE_SIZE; i++) {
-        XDECREF(state, self->a_array[i]);
+        NODE_XDECREF(state, self->a_array[i]);
     }
 
     tp->tp_free((PyObject *)self);
