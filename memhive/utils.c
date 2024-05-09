@@ -7,22 +7,6 @@ MemHive_CopyObject(module_state *calling_state, DistantPyObject *o)
 {
     assert(o != NULL);
 
-    int tracking = 0;
-    #ifdef DEBUG
-    tracking = calling_state->debug_tracking;
-    #define TRACK(o)                                                           \
-        assert(o != NULL);                                                     \
-        if (tracking && IS_GENERALLY_TRACKABLE(o)) {                           \
-            if (PySet_Add(calling_state->debug_objects, o)) abort();           \
-            PyObject *id = PyLong_FromVoidPtr(o);                              \
-            if (id == NULL) abort();                                           \
-            if (PySet_Add(calling_state->debug_objects_ids, id)) abort();      \
-            Py_CLEAR(id);                                                      \
-        }
-    #else
-    #define TRACK(o)
-    #endif
-
     // This deserves an explanation: it's only safe to use immortal objects
     // created in the main subinterpreter (`interpreter_id == 0`).
     // Our condition here is the reverse of that, because we only can
@@ -30,8 +14,16 @@ MemHive_CopyObject(module_state *calling_state, DistantPyObject *o)
     // we should allow an immortal object from a subinterpreter to be used
     // in main, because that object will cease to exist when the subinterpreter
     // that created it is done.
+    //
+    // That said, in debug mode we don't want to have this optimization at
+    // all, as we try to track objects and do multiple different checks
+    // on whether a given object is valid in a given context
+    #ifdef DEBUG
+    #define IS_SAFE_IMMORTAL(o) 0
+    #else
     #define IS_SAFE_IMMORTAL(o) \
         (_Py_IsImmortal(o) && calling_state->interpreter_id != 0)
+    #endif
 
     if (o == Py_None || o == Py_True || o == Py_False || o == Py_Ellipsis) {
         // Well-known C-defined singletons are shared between
@@ -50,7 +42,7 @@ MemHive_CopyObject(module_state *calling_state, DistantPyObject *o)
         // from "o", allocate a new object in the host interpreter,
         // and memcpy into it.
         PyObject *copy = _PyUnicode_Copy(o);
-        TRACK(copy);
+        TRACK(calling_state, copy);
         return copy;
     }
 
@@ -60,7 +52,7 @@ MemHive_CopyObject(module_state *calling_state, DistantPyObject *o)
         }
         // Safe for the same reasons _PyUnicode_Copy is safe.
         PyObject *copy = _PyLong_Copy((PyLongObject*)o);
-        TRACK(copy);
+        TRACK(calling_state, copy);
         return copy;
     }
 
@@ -70,7 +62,7 @@ MemHive_CopyObject(module_state *calling_state, DistantPyObject *o)
         }
         // Safe -- just accessing the struct member.
         PyObject *copy = PyFloat_FromDouble(PyFloat_AS_DOUBLE(o));
-        TRACK(copy);
+        TRACK(calling_state, copy);
         return copy;
     }
 
@@ -84,7 +76,7 @@ MemHive_CopyObject(module_state *calling_state, DistantPyObject *o)
             PyBytes_AS_STRING(o),
             PyBytes_GET_SIZE(o)
         );
-        TRACK(copy);
+        TRACK(calling_state, copy);
         return copy;
     }
 
@@ -96,7 +88,7 @@ MemHive_CopyObject(module_state *calling_state, DistantPyObject *o)
         module_unaryfunc copyfunc =
             ((ProxyableObject*)o)->proxy_desc->make_proxy;
         PyObject *copy = (*copyfunc)(calling_state, o);
-        TRACK(copy);
+        TRACK(calling_state, copy);
         return copy;
     } else if (PyTuple_CheckExact(o)) {
         PyObject *t = PyTuple_New(PyTuple_Size(o));
@@ -112,7 +104,7 @@ MemHive_CopyObject(module_state *calling_state, DistantPyObject *o)
             }
             PyTuple_SetItem(t, i, oo);
         }
-        TRACK(t);
+        TRACK(calling_state, t);
         return t;
     } else {
         PyErr_SetString(PyExc_ValueError,
