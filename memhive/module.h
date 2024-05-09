@@ -3,6 +3,7 @@
 
 #include "Python.h"
 #include <stdint.h>
+#include "debug.h"
 
 
 struct ProxyDescriptor;
@@ -37,6 +38,12 @@ typedef struct {
     PyTypeObject *MemQueue_Type;
 
     struct ProxyDescriptor *proxy_desc_template;
+
+#ifdef DEBUG
+    int debug_tracking;
+    PyObject *debug_objects;
+    PyObject *debug_objects_ids;
+#endif
 } module_state;
 
 module_state * MemHive_GetModuleState(PyObject *mod);

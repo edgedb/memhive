@@ -5,6 +5,7 @@
 #include "memhive.h"
 #include "structmember.h"
 #include "module.h"
+#include "debug.h"
 
 
 /*
@@ -504,7 +505,7 @@ static MapObject *
 map_update(module_state *state, uint64_t mutid, MapObject *o, PyObject *src);
 
 
-#if !defined(NDEBUG)
+#ifdef DEBUG
 static void
 _map_node_array_validate(module_state *state, void *o)
 {
@@ -763,12 +764,12 @@ _map_node_bitmap_clone(module_state *state,
             // value
             assert(node->b_array[i] != NULL);
             if (node->b_array[i - 1] == NULL) {
-                // value must be a node
+                // value must be a node, and can be a foreign one
                 assert(IS_NODE(state, node->b_array[i - 1]));
                 clone->b_array[i] = node->b_array[i];
                 NODE_INCREF(state, node->b_array[i]);
             } else {
-                // value is an object
+                // value is an object (not a node!)
                 if (my_node) {
                     // object must be from our interp
                     clone->b_array[i] = node->b_array[i];
@@ -1050,7 +1051,7 @@ map_node_bitmap_assoc(module_state *state,
             return (MapNode *)ret;
         }
     }
-    else { // XXX TODO
+    else {
         /* There was no key before with the same (shift,hash). */
 
         uint32_t n = map_bitcount(self->b_bitmap);
@@ -1293,7 +1294,7 @@ map_node_bitmap_without(module_state *state,
                     }
                 }
 
-#if !defined(NDEBUG)
+#ifdef DEBUG
                 /* Ensure that Collision.without implementation
                    converts to Bitmap nodes itself.
                 */
@@ -2237,7 +2238,7 @@ map_node_array_without(module_state *state,
                 }
                 else {
 
-#if !defined(NDEBUG)
+#ifdef DEBUG
                     if (IS_COLLISION_NODE(state, node)) {
                         assert(
                             (map_node_collision_count(
@@ -2558,7 +2559,7 @@ map_iterator_bitmap_next(module_state *state,
     Py_ssize_t pos = iter->i_pos[level];
 
     if (pos + 1 >= Py_SIZE(node)) {
-#if !defined(NDEBUG)
+#ifdef DEBUG
         assert(iter->i_level >= 0);
         iter->i_nodes[iter->i_level] = NULL;
 #endif
@@ -2597,7 +2598,7 @@ map_iterator_collision_next(module_state *state,
     Py_ssize_t pos = iter->i_pos[level];
 
     if (pos + 1 >= Py_SIZE(node)) {
-#if !defined(NDEBUG)
+#ifdef DEBUG
         assert(iter->i_level >= 0);
         iter->i_nodes[iter->i_level] = NULL;
 #endif
@@ -2623,7 +2624,7 @@ map_iterator_array_next(module_state *state,
     Py_ssize_t pos = iter->i_pos[level];
 
     if (pos >= HAMT_ARRAY_NODE_SIZE) {
-#if !defined(NDEBUG)
+#ifdef DEBUG
         assert(iter->i_level >= 0);
         iter->i_nodes[iter->i_level] = NULL;
 #endif
@@ -2645,7 +2646,7 @@ map_iterator_array_next(module_state *state,
         }
     }
 
-#if !defined(NDEBUG)
+#ifdef DEBUG
     assert(iter->i_level >= 0);
     iter->i_nodes[iter->i_level] = NULL;
 #endif

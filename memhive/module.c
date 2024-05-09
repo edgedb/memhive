@@ -1,12 +1,17 @@
 #include "memhive.h"
 #include "queue.h"
 #include "map.h"
-
+#include "debug.h"
 
 static struct PyModuleDef memhive_module;
 
 
 static int module_exec(PyObject *m);
+
+#ifdef DEBUG
+static int enable_object_tracking(PyObject *arg);
+static int disable_object_tracking(PyObject *arg);
+#endif
 
 
 static struct PyModuleDef_Slot module_slots[] = {
@@ -17,6 +22,10 @@ static struct PyModuleDef_Slot module_slots[] = {
 
 
 static PyMethodDef module_methods[] = {
+#ifdef DEBUG
+    {"enable_object_tracking", (PyCFunction)enable_object_tracking, METH_NOARGS, NULL},
+    {"disable_object_tracking", (PyCFunction)disable_object_tracking, METH_NOARGS, NULL},
+#endif
     {NULL, NULL}
 };
 
@@ -90,6 +99,11 @@ module_clear(PyObject *mod)
 
     Py_CLEAR(state->sub);
 
+    #ifdef DEBUG
+    Py_CLEAR(state->debug_objects);
+    Py_CLEAR(state->debug_objects_ids);
+    #endif
+
     return 0;
 }
 
@@ -123,8 +137,36 @@ module_traverse(PyObject *mod, visitproc visit, void *arg)
 
     Py_VISIT(state->sub);
 
+    #ifdef DEBUG
+    Py_VISIT(state->debug_objects);
+    Py_VISIT(state->debug_objects_ids);
+    #endif
+
     return 0;
 }
+
+
+#ifdef DEBUG
+static int
+enable_object_tracking(PyObject *m)
+{
+    module_state *state = MemHive_GetModuleState(m);
+    state->debug_tracking = 1;
+    if (!PySet_Clear(state->debug_objects)) abort();
+    if (!PySet_Clear(state->debug_objects_ids)) abort();
+    return 0;
+}
+
+static int
+disable_object_tracking(PyObject *m)
+{
+    module_state *state = MemHive_GetModuleState(m);
+    state->debug_tracking = 0;
+    if (!PySet_Clear(state->debug_objects)) abort();
+    if (!PySet_Clear(state->debug_objects_ids)) abort();
+    return 0;
+}
+#endif
 
 
 static struct PyModuleDef memhive_module = {
@@ -144,6 +186,14 @@ static int
 module_exec(PyObject *m)
 {
     module_state *state = MemHive_GetModuleState(m);
+
+    #ifdef DEBUG
+    state->debug_tracking = 0;
+    state->debug_objects = PySet_New(NULL);
+    assert(state->debug_objects != NULL);
+    state->debug_objects_ids = PySet_New(NULL);
+    assert(state->debug_objects_ids != NULL);
+    #endif
 
     #define CREATE_TYPE(mod, tp, spec, base, exp)                       \
     do {                                                                \
