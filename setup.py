@@ -28,7 +28,11 @@ EXTRA_DEPENDENCIES = {
     'test': TEST_DEPENDENCIES,
 }
 
-CFLAGS = ['-O2']
+CFLAGS = []
+if "DEBUG_MEMHIVE" not in os.environ:
+    CFLAGS.append('-O2')
+else:
+    CFLAGS.append('-O0')
 if platform.uname().system != 'Windows':
     CFLAGS.extend(['-std=c11', '-fsigned-char', '-Wall',
                    '-Wsign-compare', '-Wconversion'])
@@ -47,7 +51,7 @@ with open(os.path.join(
 
 
 if platform.python_implementation() == 'CPython':
-    if os.environ.get("DEBUG_MEMHIVE") == '1':
+    if "DEBUG_MEMHIVE" in os.environ:
         define_macros = []
         undef_macros = ['NDEBUG']
     else:

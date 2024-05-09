@@ -9,8 +9,8 @@ static struct PyModuleDef memhive_module;
 static int module_exec(PyObject *m);
 
 #ifdef DEBUG
-static int enable_object_tracking(PyObject *arg);
-static int disable_object_tracking(PyObject *arg);
+static PyObject * enable_object_tracking(PyObject *arg);
+static PyObject * disable_object_tracking(PyObject *arg);
 #endif
 
 
@@ -147,24 +147,24 @@ module_traverse(PyObject *mod, visitproc visit, void *arg)
 
 
 #ifdef DEBUG
-static int
+static PyObject *
 enable_object_tracking(PyObject *m)
 {
     module_state *state = MemHive_GetModuleState(m);
     state->debug_tracking = 1;
-    if (!PySet_Clear(state->debug_objects)) abort();
-    if (!PySet_Clear(state->debug_objects_ids)) abort();
-    return 0;
+    if (PySet_Clear(state->debug_objects)) abort();
+    if (PySet_Clear(state->debug_objects_ids)) abort();
+    Py_RETURN_NONE;
 }
 
-static int
+static PyObject *
 disable_object_tracking(PyObject *m)
 {
     module_state *state = MemHive_GetModuleState(m);
     state->debug_tracking = 0;
-    if (!PySet_Clear(state->debug_objects)) abort();
-    if (!PySet_Clear(state->debug_objects_ids)) abort();
-    return 0;
+    if (PySet_Clear(state->debug_objects)) abort();
+    if (PySet_Clear(state->debug_objects_ids)) abort();
+    Py_RETURN_NONE;
 }
 #endif
 

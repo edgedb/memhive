@@ -506,11 +506,53 @@ map_update(module_state *state, uint64_t mutid, MapObject *o, PyObject *src);
 
 
 #ifdef DEBUG
-static void
-_map_node_array_validate(module_state *state, void *o)
+
+static int
+is_my_object(module_state *state, PyObject *obj)
 {
-    assert(IS_ARRAY_NODE(state, o));
-    MapNode_Array *node = (MapNode_Array*)(o);
+    if (!IS_GENERALLY_TRACKABLE(obj) || state->interpreter_id == 0) {
+        // really we have no idea in this case, so just say yes.
+        return 1;
+    }
+
+    PyObject *id = PyLong_FromVoidPtr(obj);
+    assert(id != NULL);
+    int is_my = PySet_Contains(state->debug_objects_ids, id);
+    printf("check %d\n", is_my);
+    Py_CLEAR(id);
+    assert(is_my >= 0);
+    return is_my;
+}
+
+static void
+map_node_bitmap_validate(module_state *state, MapNode_Bitmap *node)
+{
+    if (!state->debug_tracking) {
+        return;
+    }
+
+    int my_node = MY_NODE(state, node);
+
+    for (Py_ssize_t i = 0; i < Py_SIZE(node); i++) {
+        if (i % 2 == 0) {
+            // key
+            if (node->b_array[i] != NULL) {
+                assert(is_my_object(state, node->b_array[i]) == my_node);
+            }
+        } else {
+            assert(node->b_array[i] != NULL);
+            if (node->b_array[i - 1] != NULL) {
+                // this is a value for a non-NULL key, so it
+                // must be a scalar value (not a node)
+                assert(is_my_object(state, node->b_array[i]) == my_node);
+            }
+        }
+    }
+}
+
+static void
+map_node_array_validate(module_state *state, MapNode_Array *node)
+{
     assert(node->a_count <= HAMT_ARRAY_NODE_SIZE);
     Py_ssize_t i = 0, count = 0;
     for (; i < HAMT_ARRAY_NODE_SIZE; i++) {
@@ -521,10 +563,34 @@ _map_node_array_validate(module_state *state, void *o)
     assert(count == node->a_count);
 }
 
-#define VALIDATE_ARRAY_NODE(state, NODE) \
-    do { _map_node_array_validate(state, NODE); } while (0);
+static void
+map_node_collision_validate(module_state *state, MapNode_Collision *node)
+{
+    int my_node = MY_NODE(state, node);
+    for (Py_ssize_t i = 0; i < Py_SIZE(node); i++) {
+        assert(is_my_object(state, node->c_array[i]) == my_node);
+    }
+}
+
+static void
+map_node_validate(module_state *state, PyObject *node)
+{
+    if (IS_BITMAP_NODE(state, node)) {
+        return map_node_bitmap_validate(state, (MapNode_Bitmap *)node);
+    }
+    else if (IS_ARRAY_NODE(state, node)) {
+        return map_node_array_validate(state, (MapNode_Array *)node);
+    }
+    else {
+        assert(IS_COLLISION_NODE(state, node));
+        return map_node_collision_validate(state, (MapNode_Collision *)node);
+    }
+}
+
+#define VALIDATE_NODE(state, NODE) \
+    do { map_node_validate(state, (PyObject*)NODE); } while (0);
 #else
-#define VALIDATE_ARRAY_NODE(state, NODE)
+#define VALIDATE_NODE(state, NODE)
 #endif
 
 
@@ -741,6 +807,8 @@ _map_node_bitmap_clone(module_state *state,
     MapNode_Bitmap *clone;
     Py_ssize_t i;
 
+    VALIDATE_NODE(state, node);
+
     clone = (MapNode_Bitmap *)map_node_bitmap_new(
         state, Py_SIZE(node), mutid);
     if (clone == NULL) {
@@ -765,7 +833,7 @@ _map_node_bitmap_clone(module_state *state,
             assert(node->b_array[i] != NULL);
             if (node->b_array[i - 1] == NULL) {
                 // value must be a node, and can be a foreign one
-                assert(IS_NODE(state, node->b_array[i - 1]));
+                assert(IS_NODE(state, node->b_array[i]));
                 clone->b_array[i] = node->b_array[i];
                 NODE_INCREF(state, node->b_array[i]);
             } else {
@@ -782,6 +850,9 @@ _map_node_bitmap_clone(module_state *state,
     }
 
     clone->b_bitmap = node->b_bitmap;
+
+    VALIDATE_NODE(state, clone);
+
     return clone;
 }
 
@@ -847,6 +918,8 @@ map_node_new_bitmap_or_collision(module_state *state,
         Py_INCREF(val2);
         n->c_array[3] = val2;
 
+        VALIDATE_NODE(state, n);
+
         return (MapNode *)n;
     }
     else {
@@ -869,6 +942,8 @@ map_node_new_bitmap_or_collision(module_state *state,
         if (n == NULL) {
             return NULL;
         }
+
+        VALIDATE_NODE(state, n);
 
         return n;
     }
@@ -1140,7 +1215,7 @@ map_node_bitmap_assoc(module_state *state,
                 }
             }
 
-            VALIDATE_ARRAY_NODE(state, new_node)
+            VALIDATE_NODE(state, new_node)
 
             /* That's it! */
             res = (MapNode *)new_node;
@@ -1968,7 +2043,7 @@ map_node_array_clone(module_state *state, MapNode_Array *node, uint64_t mutid)
     MapNode_Array *clone;
     Py_ssize_t i;
 
-    VALIDATE_ARRAY_NODE(state, node)
+    VALIDATE_NODE(state, node)
     assert(node->a_count <= HAMT_ARRAY_NODE_SIZE);
 
     /* Create a new Array node. */
@@ -1985,7 +2060,7 @@ map_node_array_clone(module_state *state, MapNode_Array *node, uint64_t mutid)
 
     clone->a_mutid = mutid;
 
-    VALIDATE_ARRAY_NODE(state, clone)
+    VALIDATE_NODE(state, clone)
     return clone;
 }
 
@@ -2057,7 +2132,7 @@ map_node_array_assoc(module_state *state,
 
         assert(new_node->a_array[idx] == NULL);
         new_node->a_array[idx] = child_node;  /* borrow */
-        VALIDATE_ARRAY_NODE(state, new_node)
+        VALIDATE_NODE(state, new_node)
     }
     else {
         /* There's a child node for the given hash.
@@ -2087,7 +2162,7 @@ map_node_array_assoc(module_state *state,
         }
 
         Py_SETREF(new_node->a_array[idx], child_node);  /* borrow */
-        VALIDATE_ARRAY_NODE(state, new_node)
+        VALIDATE_NODE(state, new_node)
     }
 
     return (MapNode *)new_node;

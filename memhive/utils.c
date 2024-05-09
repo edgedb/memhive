@@ -13,10 +13,10 @@ MemHive_CopyObject(module_state *calling_state, DistantPyObject *o)
     #define TRACK(o)                                                           \
         assert(o != NULL);                                                     \
         if (tracking && IS_GENERALLY_TRACKABLE(o)) {                           \
-            if (!PySet_Add(calling_state->debug_objects, o)) abort();          \
+            if (PySet_Add(calling_state->debug_objects, o)) abort();           \
             PyObject *id = PyLong_FromVoidPtr(o);                              \
             if (id == NULL) abort();                                           \
-            if (!PySet_Add(calling_state->debug_objects_ids, id)) abort();     \
+            if (PySet_Add(calling_state->debug_objects_ids, id)) abort();      \
             Py_CLEAR(id);                                                      \
         }
     #else
