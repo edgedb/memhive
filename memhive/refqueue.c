@@ -110,6 +110,7 @@ int MemHive_RefQueue_Run(RefQueue *q)
     struct item* to_reuse = NULL;
 
     while (incs != NULL) {
+        // printf("INC %p\n", incs->obj);
         Py_INCREF(incs->obj);
         incs->obj = NULL;
 
@@ -122,6 +123,7 @@ int MemHive_RefQueue_Run(RefQueue *q)
     }
 
     while (decs != NULL) {
+        // printf("DEC %p\n", decs->obj);
         Py_DECREF(decs->obj);
         decs->obj = NULL;
 

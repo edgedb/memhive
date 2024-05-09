@@ -88,6 +88,8 @@ module_clear(PyObject *mod)
 
     Py_CLEAR(state->empty_bitmap_node);
 
+    Py_CLEAR(state->sub);
+
     return 0;
 }
 
@@ -118,6 +120,8 @@ module_traverse(PyObject *mod, visitproc visit, void *arg)
     Py_VISIT(state->MapKeysIterType);
     Py_VISIT(state->MapValuesIterType);
     Py_VISIT(state->MapItemsIterType);
+
+    Py_VISIT(state->sub);
 
     return 0;
 }
@@ -189,6 +193,8 @@ module_exec(PyObject *m)
     PyInterpreterState *interp = PyInterpreterState_Get();
     assert(interp != NULL);
     state->interpreter_id = PyInterpreterState_GetID(interp);
+
+    state->sub = NULL; // will be initialized later, in MemHiveSub's __init__
 
     state->mutid_counter = 1;
     // Important to call this one after `state->interpreter_id` is set

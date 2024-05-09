@@ -9,6 +9,9 @@ struct ProxyDescriptor;
 
 
 typedef struct {
+    // The `MemHiveSub` instance that manages this module.
+    // NULL for the main subinterpreter's `MemHive` -- we don't need it.
+    PyObject *sub;
     int64_t interpreter_id;
 
     PyObject *empty_bitmap_node;

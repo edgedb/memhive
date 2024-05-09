@@ -131,9 +131,7 @@ MemQueue_Close(MemQueue *queue)
     Py_BEGIN_ALLOW_THREADS
     pthread_mutex_lock(&queue->mut);
     Py_END_ALLOW_THREADS
-    if (queue->length == 0) {
-        pthread_cond_broadcast(&queue->cond);
-    }
+    pthread_cond_broadcast(&queue->cond);
     pthread_mutex_unlock(&queue->mut);
 
     return 0;

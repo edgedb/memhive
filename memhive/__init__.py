@@ -122,6 +122,8 @@ class Executor:
                     mem.put(ret)
             except ClosedQueueError:
                 pass
+            finally:
+                mem.do_refs()
             \n''')
 
             sub = subint.create(isolated=True)

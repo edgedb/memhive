@@ -222,11 +222,16 @@ memhive_py_get(MemHive *o, PyObject *args)
         return NULL;
     }
 
+    PyObject *ret = MemHive_CopyObject(state, remote_val);
+    if (ret == NULL) {
+        return NULL;
+    }
+
     if (MemHive_RefQueue_Dec(((MemHiveSub*)sender)->subs_refs, remote_val)) {
         return NULL;
     }
 
-    return MemHive_CopyObject(state, remote_val);
+    return ret;
 }
 
 static PyObject *

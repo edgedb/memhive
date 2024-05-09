@@ -24,6 +24,10 @@ memhive_sub_tp_init(MemHiveSub *o, PyObject *args, PyObject *kwds)
         return -1;
     }
 
+    module_state *state = MemHive_GetModuleStateByPythonType(Py_TYPE(o));
+    state->sub = (PyObject*)o;
+    Py_INCREF(state->sub);
+
     return 0;
 }
 
@@ -71,11 +75,16 @@ memhive_sub_py_get(MemHiveSub *o, PyObject *args)
         return NULL;
     }
 
+    PyObject *ret = MemHive_CopyObject(state, remote_val);
+    if (ret == NULL) {
+        return NULL;
+    }
+
     if (MemHive_RefQueue_Dec(o->main_refs, remote_val)) {
         return NULL;
     }
 
-    return MemHive_CopyObject(state, remote_val);
+    return ret;
 }
 
 
