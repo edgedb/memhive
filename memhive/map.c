@@ -532,6 +532,23 @@ map_bitindex(uint32_t bitmap, uint32_t bit)
     return map_bitcount(bitmap & (bit - 1));
 }
 
+static uint64_t
+new_mutid(module_state *state)
+{
+    // TODO: we used to have just a global counter for this,
+    // but that would no longer work when the module
+    // is initialized in multiple subinterpreters. Ideally,
+    // the main subinterpreter should have the counter and
+    // a lock around it in the root module state. Generating
+    // new mutids isn't that frequent, so no lock contention
+    // is expected. Maybe this is a good use case for stdatomic.
+    // For now, we can just read the monotonic clock, it has
+    // nanosecond precision (which should be enough) and
+    // it might actually be quicker than messing with locks
+    // (hey, we should benchmark that.)
+    return (uint64_t)_PyTime_GetMonotonicClock();
+}
+
 
 /////////////////////////////////// Dump Helpers
 
@@ -3165,7 +3182,7 @@ map_tp_init(MapObject *self, PyObject *args, PyObject *kwds)
             return -1;
         }
         else {
-            mutid = state->mutid_counter++;
+            mutid = new_mutid(state);
             if (map_update_inplace(state, mutid, (BaseMapObject *)self, arg)) {
                 return -1;
             }
@@ -3178,7 +3195,7 @@ map_tp_init(MapObject *self, PyObject *args, PyObject *kwds)
         }
 
         if (!mutid) {
-            mutid = state->mutid_counter++;
+            mutid = new_mutid(state);
         }
 
         if (map_update_inplace(state, mutid, (BaseMapObject *)self, kwds)) {
@@ -3386,7 +3403,7 @@ map_py_mutate(MapObject *self, PyObject *args)
     Py_INCREF(self->h_root);
     o->m_root = self->h_root;
 
-    o->m_mutid = state->mutid_counter++;
+    o->m_mutid = new_mutid(state);
 
     PyObject_GC_Track(o);
     return (PyObject *)o;
@@ -3405,7 +3422,7 @@ map_py_update(MapObject *self, PyObject *args, PyObject *kwds)
     }
 
     if (arg != NULL) {
-        mutid = state->mutid_counter++;
+        mutid = new_mutid(state);
         new = map_update(state, mutid, self, arg);
         if (new == NULL) {
             return NULL;
@@ -3423,7 +3440,7 @@ map_py_update(MapObject *self, PyObject *args, PyObject *kwds)
         }
 
         if (!mutid) {
-            mutid = state->mutid_counter++;
+            mutid = new_mutid(state);
         }
 
         MapObject *new2 = map_update(state, mutid, new, kwds);

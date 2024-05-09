@@ -196,7 +196,6 @@ module_exec(PyObject *m)
 
     state->sub = NULL; // will be initialized later, in MemHiveSub's __init__
 
-    state->mutid_counter = 1;
     // Important to call this one after `state->interpreter_id` is set
     state->empty_bitmap_node = (PyObject *)_map_node_bitmap_new(state, 0, 0);
 

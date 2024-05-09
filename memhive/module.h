@@ -15,7 +15,6 @@ typedef struct {
     int64_t interpreter_id;
 
     PyObject *empty_bitmap_node;
-    uint64_t mutid_counter;
 
     PyObject *ClosedQueueError;
 
