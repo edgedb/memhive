@@ -258,6 +258,7 @@ Further Reading
 #define TYPENAME_BITMAP_NODE "_memhive.BitmapNode"
 #define TYPENAME_COLLISION_NODE "_memhive.CollisionNode"
 
+#define _IGNORE_UNUSED_WARNING(x) if(0) {(void)(x);}
 
 // IS_XXX_NODE_SLOW methods can be called on any PyObject, no matter
 // if it belongs to our subinterpreter or another one.
@@ -290,10 +291,19 @@ Further Reading
 #define IS_NODE_LOCAL(state, node)                                            \
     (((MapNode *)(node))->interpreter_id == (state)->interpreter_id)
 
+#define MAYBE_VISIT_NODE(state, obj)                                          \
+    _IGNORE_UNUSED_WARNING(state);                                            \
+    if (obj != NULL) {                                                        \
+        assert(IS_NODE_SLOW(state, obj));                                     \
+        if (IS_NODE_LOCAL(state, obj)) {                                      \
+            Py_VISIT(obj);                                                    \
+        }                                                                     \
+    }
+
 #define MAYBE_VISIT(state, obj)                                               \
-    if (obj != NULL && (                                                      \
-        !IS_NODE_SLOW(state, obj) || IS_NODE_LOCAL(state, obj)                \
-    )) {                                                                      \
+    _IGNORE_UNUSED_WARNING(state);                                            \
+    if (obj != NULL) {                                                        \
+        assert(!IS_NODE_SLOW(state, obj));                                    \
         Py_VISIT(obj);                                                        \
     }
 
@@ -1714,7 +1724,11 @@ map_node_bitmap_traverse(MapNode_Bitmap *self, visitproc visit, void *arg)
 
     Py_ssize_t i;
     for (i = Py_SIZE(self); --i >= 0; ) {
-        MAYBE_VISIT(state, self->b_array[i]);
+        if (i % 2 == 1 && self->b_array[i - 1] == NULL) {
+            MAYBE_VISIT_NODE(state, self->b_array[i]);
+        } else {
+            MAYBE_VISIT(state, self->b_array[i]);
+        }
     }
 
     return 0;
@@ -2654,7 +2668,7 @@ map_node_array_traverse(MapNode_Array *self,
 
     Py_ssize_t i;
     for (i = 0; i < HAMT_ARRAY_NODE_SIZE; i++) {
-        MAYBE_VISIT(state, self->a_array[i]);
+        MAYBE_VISIT_NODE(state, self->a_array[i]);
     }
 
     return 0;
@@ -3694,7 +3708,7 @@ map_tp_traverse(BaseMapObject *self, visitproc visit, void *arg)
 {
     module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
     MAYBE_VISIT(state, Py_TYPE(self));
-    MAYBE_VISIT(state, self->b_root);
+    MAYBE_VISIT_NODE(state, self->b_root);
     return 0;
 }
 
