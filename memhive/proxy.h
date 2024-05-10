@@ -21,7 +21,8 @@ typedef PyObject * (*module_unaryfunc)(module_state *, PyObject *);
 
 
 typedef struct ProxyDescriptor {
-    module_unaryfunc make_proxy;
+    module_unaryfunc copy_from_main_to_sub;
+    module_unaryfunc copy_from_sub_to_main;
 } ProxyDescriptor;
 
 

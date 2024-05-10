@@ -104,6 +104,9 @@ module_clear(PyObject *mod)
     Py_CLEAR(state->debug_objects_ids);
     #endif
 
+    PyMem_RawFree(state->proxy_desc_template);
+    state->proxy_desc_template = NULL;
+
     return 0;
 }
 
@@ -253,7 +256,11 @@ module_exec(PyObject *m)
     if (proxy_desc == NULL) {
         return -1;
     }
-    proxy_desc->make_proxy = NewMapProxy;
+    // TODO: add an indirection function looking at type name and
+    // dispatching accordingly. Will only need that when we add the
+    // tuple-like type to compliment our mapping.
+    proxy_desc->copy_from_main_to_sub = NewMapProxy;
+    proxy_desc->copy_from_sub_to_main = CopyMapProxy;
     state->proxy_desc_template = proxy_desc;
 
     return 0;

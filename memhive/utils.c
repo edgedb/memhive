@@ -3,7 +3,7 @@
 
 
 PyObject *
-MemHive_CopyObject(module_state *calling_state, DistantPyObject *o)
+MemHive_CopyObject(module_state *state, DistantPyObject *o)
 {
     assert(o != NULL);
 
@@ -22,7 +22,7 @@ MemHive_CopyObject(module_state *calling_state, DistantPyObject *o)
     #define IS_SAFE_IMMORTAL(o) 0
     #else
     #define IS_SAFE_IMMORTAL(o) \
-        (_Py_IsImmortal(o) && calling_state->interpreter_id != 0)
+        (_Py_IsImmortal(o) && state->interpreter_id != 0)
     #endif
 
     if (o == Py_None || o == Py_True || o == Py_False || o == Py_Ellipsis) {
@@ -42,7 +42,7 @@ MemHive_CopyObject(module_state *calling_state, DistantPyObject *o)
         // from "o", allocate a new object in the host interpreter,
         // and memcpy into it.
         PyObject *copy = _PyUnicode_Copy(o);
-        TRACK(calling_state, copy);
+        TRACK(state, copy);
         return copy;
     }
 
@@ -52,7 +52,7 @@ MemHive_CopyObject(module_state *calling_state, DistantPyObject *o)
         }
         // Safe for the same reasons _PyUnicode_Copy is safe.
         PyObject *copy = _PyLong_Copy((PyLongObject*)o);
-        TRACK(calling_state, copy);
+        TRACK(state, copy);
         return copy;
     }
 
@@ -62,7 +62,7 @@ MemHive_CopyObject(module_state *calling_state, DistantPyObject *o)
         }
         // Safe -- just accessing the struct member.
         PyObject *copy = PyFloat_FromDouble(PyFloat_AS_DOUBLE(o));
-        TRACK(calling_state, copy);
+        TRACK(state, copy);
         return copy;
     }
 
@@ -76,7 +76,7 @@ MemHive_CopyObject(module_state *calling_state, DistantPyObject *o)
             PyBytes_AS_STRING(o),
             PyBytes_GET_SIZE(o)
         );
-        TRACK(calling_state, copy);
+        TRACK(state, copy);
         return copy;
     }
 
@@ -86,9 +86,13 @@ MemHive_CopyObject(module_state *calling_state, DistantPyObject *o)
         return NULL;
     } else if (MEMHIVE_IS_PROXYABLE(o)) {
         module_unaryfunc copyfunc =
-            ((ProxyableObject*)o)->proxy_desc->make_proxy;
-        PyObject *copy = (*copyfunc)(calling_state, o);
-        TRACK(calling_state, copy);
+            state->interpreter_id == 0
+                ?
+                    ((ProxyableObject*)o)->proxy_desc->copy_from_sub_to_main
+                :
+                    ((ProxyableObject*)o)->proxy_desc->copy_from_main_to_sub;
+        PyObject *copy = (*copyfunc)(state, o);
+        TRACK(state, copy);
         return copy;
     } else if (PyTuple_CheckExact(o)) {
         PyObject *t = PyTuple_New(PyTuple_Size(o));
@@ -98,13 +102,13 @@ MemHive_CopyObject(module_state *calling_state, DistantPyObject *o)
         for (Py_ssize_t i = 0; i < PyTuple_Size(o); i++) {
             PyObject *el = PyTuple_GetItem(o, i);
             assert(el != NULL);
-            PyObject *oo = MemHive_CopyObject(calling_state, el);
+            PyObject *oo = MemHive_CopyObject(state, el);
             if (oo == NULL) {
                 return NULL;
             }
             PyTuple_SetItem(t, i, oo);
         }
-        TRACK(calling_state, t);
+        TRACK(state, t);
         return t;
     } else {
         PyErr_SetString(PyExc_ValueError,
