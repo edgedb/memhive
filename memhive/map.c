@@ -1001,7 +1001,7 @@ map_node_bitmap_clone_without(module_state *state,
     VALIDATE_NODE(state, o);
 
     MapNode_Bitmap *clone = (MapNode_Bitmap *)map_node_bitmap_new(
-        state, Py_SIZE(o), mutid);
+        state, Py_SIZE(o) - 2, mutid);
     if (clone == NULL) {
         return NULL;
     }
@@ -1010,7 +1010,7 @@ map_node_bitmap_clone_without(module_state *state,
         return NULL;
     }
 
-    if (map_node_bitmap_copyels(state, o, clone, 2 * idx + 2, Py_SIZE(o), 0)) {
+    if (map_node_bitmap_copyels(state, o, clone, 2 * idx + 2, Py_SIZE(o), -2)) {
         return NULL;
     }
 
@@ -1475,6 +1475,8 @@ map_node_bitmap_without(module_state *state,
             shift + 5, hash, key, &sub_node,
             mutid);
 
+        VALIDATE_NODE(state, sub_node);
+
         switch (res) {
             case W_EMPTY:
                 /* It's impossible for us to receive a W_EMPTY here:
@@ -1511,6 +1513,7 @@ map_node_bitmap_without(module_state *state,
                         */
 
                         if (mutid != 0 && self->b_mutid == mutid) {
+                            assert(MY_NODE(state, self));
                             target = self;
                             NODE_INCREF(state, target);
                         }
@@ -1525,10 +1528,14 @@ map_node_bitmap_without(module_state *state,
                         PyObject *key = sub_tree->b_array[0];
                         PyObject *val = sub_tree->b_array[1];
 
+                        if (target->b_array[key_idx] == NULL) {
+                            NODE_CLEAR(state, target->b_array[val_idx]);
+                        }
+                        INCREF(state, val);
+                        XSETREF(state, target->b_array[val_idx], val);
+
                         INCREF(state, key);
                         XSETREF(state, target->b_array[key_idx], key);
-                        INCREF(state, val);
-                        SETREF(state, target->b_array[val_idx], val);
 
                         NODE_DECREF(state, sub_tree);
 
@@ -1564,6 +1571,7 @@ map_node_bitmap_without(module_state *state,
                     (PyObject *)sub_node);  /* borrow */
 
                 *new_node = (MapNode *)target;
+                VALIDATE_NODE(state, *new_node);
                 return W_NEWNODE;
             }
 
@@ -1597,6 +1605,7 @@ map_node_bitmap_without(module_state *state,
             return W_ERROR;
         }
 
+        VALIDATE_NODE(state, *new_node);
         return W_NEWNODE;
     }
 }
@@ -2016,6 +2025,8 @@ map_node_collision_without(module_state *state,
     map_find_t found = map_node_collision_find_index(
         state, self, key, &key_idx);
 
+    int my_node = MY_NODE(state, self);
+
     switch (found) {
         case F_ERROR:
             return W_ERROR;
@@ -2023,6 +2034,8 @@ map_node_collision_without(module_state *state,
         case F_NOT_FOUND:
             return W_NOT_FOUND;
 
+        case F_FOUND_EXT:
+            assert(!my_node);
         case F_FOUND:
             assert(key_idx >= 0);
             assert(key_idx < Py_SIZE(self));
@@ -2050,22 +2063,33 @@ map_node_collision_without(module_state *state,
                 }
 
                 if (key_idx == 0) {
-                    INCREF(state, self->c_array[2]);
-                    node->b_array[0] = self->c_array[2];
-                    INCREF(state, self->c_array[3]);
-                    node->b_array[1] = self->c_array[3];
+                    if (my_node) {
+                        INCREF(state, self->c_array[2]);
+                        node->b_array[0] = self->c_array[2];
+                        INCREF(state, self->c_array[3]);
+                        node->b_array[1] = self->c_array[3];
+                    } else {
+                        node->b_array[0] = COPY_OBJ(state, self->c_array[2]);
+                        node->b_array[1] = COPY_OBJ(state, self->c_array[3]);
+                    }
                 }
                 else {
                     assert(key_idx == 2);
-                    INCREF(state, self->c_array[0]);
-                    node->b_array[0] = self->c_array[0];
-                    INCREF(state, self->c_array[1]);
-                    node->b_array[1] = self->c_array[1];
+                    if (my_node) {
+                        INCREF(state, self->c_array[0]);
+                        node->b_array[0] = self->c_array[0];
+                        INCREF(state, self->c_array[1]);
+                        node->b_array[1] = self->c_array[1];
+                    } else {
+                        node->b_array[0] = COPY_OBJ(state, self->c_array[0]);
+                        node->b_array[1] = COPY_OBJ(state, self->c_array[1]);
+                    }
                 }
 
                 node->b_bitmap = map_bitpos(hash, shift);
 
                 *new_node = (MapNode *)node;
+                VALIDATE_NODE(state, node);
                 return W_NEWNODE;
             }
 
@@ -2080,16 +2104,26 @@ map_node_collision_without(module_state *state,
 
             /* Copy all other keys from `self` to `new` */
             Py_ssize_t i;
-            for (i = 0; i < key_idx; i++) {
-                INCREF(state, self->c_array[i]);
-                new->c_array[i] = self->c_array[i];
-            }
-            for (i = key_idx + 2; i < Py_SIZE(self); i++) {
-                INCREF(state, self->c_array[i]);
-                new->c_array[i - 2] = self->c_array[i];
+            if (my_node) {
+                for (i = 0; i < key_idx; i++) {
+                    INCREF(state, self->c_array[i]);
+                    new->c_array[i] = self->c_array[i];
+                }
+                for (i = key_idx + 2; i < Py_SIZE(self); i++) {
+                    INCREF(state, self->c_array[i]);
+                    new->c_array[i - 2] = self->c_array[i];
+                }
+            } else {
+                for (i = 0; i < key_idx; i++) {
+                    new->c_array[i] = COPY_OBJ(state, self->c_array[i]);
+                }
+                for (i = key_idx + 2; i < Py_SIZE(self); i++) {
+                    new->c_array[i - 2] = COPY_OBJ(state, self->c_array[i]);
+                }
             }
 
             *new_node = (MapNode*)new;
+            VALIDATE_NODE(state, new);
             return W_NEWNODE;
 
         default:
@@ -2398,6 +2432,8 @@ map_node_array_without(module_state *state,
             */
             assert(sub_node != NULL);
 
+            VALIDATE_NODE(state, sub_node);
+
             if (mutid != 0 && self->a_mutid == mutid) {
                 target = self;
                 NODE_INCREF(state, self);
@@ -2412,6 +2448,7 @@ map_node_array_without(module_state *state,
 
             NODE_SETREF(state, target->a_array[idx], sub_node);  /* borrow */
             *new_node = (MapNode*)target;  /* borrow */
+            VALIDATE_NODE(state, target);
             return W_NEWNODE;
         }
 
@@ -2449,6 +2486,7 @@ map_node_array_without(module_state *state,
                 NODE_CLEAR(state, target->a_array[idx]);
 
                 *new_node = (MapNode*)target;  /* borrow */
+                VALIDATE_NODE(state, target);
                 return W_NEWNODE;
             }
 
@@ -2496,10 +2534,15 @@ map_node_array_without(module_state *state,
                         PyObject *key = child->b_array[0];
                         PyObject *val = child->b_array[1];
 
-                        INCREF(state, key);
-                        new->b_array[new_i] = key;
-                        INCREF(state, val);
-                        new->b_array[new_i + 1] = val;
+                        if (MY_NODE(state, child)) {
+                            INCREF(state, key);
+                            new->b_array[new_i] = key;
+                            INCREF(state, val);
+                            new->b_array[new_i + 1] = val;
+                        } else {
+                            new->b_array[new_i] = COPY_OBJ(state, key);
+                            new->b_array[new_i + 1] = COPY_OBJ(state, val);
+                        }
                     }
                     else {
                         new->b_array[new_i] = NULL;
@@ -2531,6 +2574,7 @@ map_node_array_without(module_state *state,
 
             new->b_bitmap = bitmap;
             *new_node = (MapNode*)new;  /* borrow */
+            VALIDATE_NODE(state, new);
             return W_NEWNODE;
         }
 
@@ -2982,6 +3026,8 @@ map_assoc(module_state *state,
         return NULL;
     }
 
+    VALIDATE_NODE(state, new_root);
+
     if (new_root == o->h_root) {
         NODE_DECREF(state, new_root);
         INCREF(state, o);
@@ -3027,6 +3073,8 @@ map_without(module_state *state, MapObject *o, PyObject *key)
             return NULL;
         case W_NEWNODE: {
             assert(new_root != NULL);
+
+            VALIDATE_NODE(state, new_root);
 
             MapObject *new_o = map_alloc(state);
             if (new_o == NULL) {
