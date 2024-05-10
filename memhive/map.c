@@ -4217,6 +4217,9 @@ map_node_update_from_map(module_state *state,
 
         iter_res = map_iterator_next(state, &iter, &_node, &key, &val);
         if (iter_res == I_ITEM) {
+            TRACK(state, key);
+            TRACK(state, val);
+
             key_hash = map_hash(key);
             if (key_hash == -1) {
                 goto err;
@@ -4290,6 +4293,9 @@ map_node_update_from_dict(module_state *state,
             DECREF(state, key);
             goto err;
         }
+
+        TRACK(state, key);
+        TRACK(state, val);
 
         MapNode *iter_root = map_node_assoc(
             state,
@@ -4389,6 +4395,9 @@ map_node_update_from_seq(module_state *state,
         val = PySequence_Fast_GET_ITEM(fast, 1);
         INCREF(state, key);
         INCREF(state, val);
+
+        TRACK(state, key);
+        TRACK(state, val);
 
         key_hash = map_hash(key);
         if (key_hash == -1) {
@@ -4581,6 +4590,9 @@ mapmut_set(module_state *state,
            PyObject *val)
 {
     int added_leaf = 0;
+
+    TRACK(state, key);
+    TRACK(state, val);
 
     assert(key_hash != -1);
     MapNode *new_root = map_node_assoc(
