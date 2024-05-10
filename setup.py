@@ -63,6 +63,7 @@ if platform.python_implementation() == 'CPython':
             "memhive._memhive",
             [
                 "memhive/queue.c",
+                "memhive/track.c",
                 "memhive/refqueue.c",
                 "memhive/module.c",
                 "memhive/memhive.c",

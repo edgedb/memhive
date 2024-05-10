@@ -26,7 +26,7 @@ typedef struct {
 RefQueue *MemHive_RefQueue_New(void);
 int MemHive_RefQueue_Inc(RefQueue *queue, PyObject *obj);
 int MemHive_RefQueue_Dec(RefQueue *queue, PyObject *obj);
-int MemHive_RefQueue_Run(RefQueue *queue);
+int MemHive_RefQueue_Run(RefQueue *queue, module_state *state);
 int MemHive_RefQueue_Destroy(RefQueue *queue);
 
 #endif

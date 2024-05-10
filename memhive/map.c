@@ -1,12 +1,14 @@
 #include <stddef.h> /* For offsetof */
 #include <stdarg.h>
+
 #include "pythoncapi_compat.h"
 #include "map.h"
 #include "memhive.h"
-#include "structmember.h"
 #include "module.h"
 #include "debug.h"
+#include "track.h"
 
+#include "structmember.h"
 
 /*
 This file provides an implemention of an immutable mapping using the
@@ -258,8 +260,6 @@ Further Reading
 #define TYPENAME_BITMAP_NODE "_memhive.BitmapNode"
 #define TYPENAME_COLLISION_NODE "_memhive.CollisionNode"
 
-#define _IGNORE_UNUSED_WARNING(x) if(0) {(void)(x);}
-
 // IS_XXX_NODE_SLOW methods can be called on any PyObject, no matter
 // if it belongs to our subinterpreter or another one.
 #define IS_ARRAY_NODE_SLOW(state, o)                                          \
@@ -292,7 +292,6 @@ Further Reading
     (((MapNode *)(node))->interpreter_id == (state)->interpreter_id)
 
 #define MAYBE_VISIT_NODE(state, obj)                                          \
-    _IGNORE_UNUSED_WARNING(state);                                            \
     if (obj != NULL) {                                                        \
         assert(IS_NODE_SLOW(state, obj));                                     \
         if (IS_NODE_LOCAL(state, obj)) {                                      \
@@ -301,7 +300,6 @@ Further Reading
     }
 
 #define MAYBE_VISIT(state, obj)                                               \
-    _IGNORE_UNUSED_WARNING(state);                                            \
     if (obj != NULL) {                                                        \
         assert(!IS_NODE_SLOW(state, obj));                                    \
         Py_VISIT(obj);                                                        \
@@ -376,29 +374,8 @@ Further Reading
     } while(0)
 
 #ifdef DEBUG
-    static int
-    debug_is_local_object(module_state *state, PyObject *obj)
-    {
-        if (!IS_TRACKABLE(state, obj)) {
-            // really we have no idea in this case, so just say yes.
-            return 1;
-        }
-
-        if (!IS_TRACKING(state)) {
-            // tracking is disabled, hence nothing to do here.
-            return 1;
-        }
-
-        PyObject *id = PyLong_FromVoidPtr(obj);
-        assert(id != NULL);
-        int is_local = PySet_Contains(state->debug_objects_ids, id);
-        Py_DecRef(id);
-        assert(is_local >= 0);
-        return is_local;
-    }
-
-    #define _ENSURE_LOCAL(state, o)                                            \
-        do { assert(debug_is_local_object(state, (PyObject *)o)); } while(0)
+    #define _ENSURE_LOCAL(state, o)                                           \
+        assert(IS_LOCALLY_TRACKED(state, (PyObject *)o));
 
     #define INCREF(state, o)                                                  \
         do {                                                                  \
@@ -450,7 +427,7 @@ Further Reading
     #define XSETREF(state, dst, src)                                          \
         do {                                                                  \
             assert(dst == NULL || (                                           \
-                !IS_NODE_SLOW(state, dst) && debug_is_local_object(state, dst)\
+                !IS_NODE_SLOW(state, dst) && IS_LOCALLY_TRACKED(state, dst)   \
             ));                                                               \
             Py_DecRef((PyObject*)dst);                                        \
             assert(src == NULL || !IS_NODE_SLOW(state, src));                 \
@@ -668,7 +645,7 @@ debug_is_local_object_to_node(
         return 1;
     }
 
-    return debug_is_local_object(state, obj) == IS_NODE_LOCAL(state, node);
+    return IS_LOCALLY_TRACKED(state, obj) == IS_NODE_LOCAL(state, node);
 }
 
 static void
@@ -921,6 +898,7 @@ _map_node_bitmap_new(module_state *state, Py_ssize_t size, uint64_t mutid)
     if (node == NULL) {
         return NULL;
     }
+    TRACK(state, node);
 
     node->interpreter_id = state->interpreter_id;
     node->node_kind = N_BITMAP;
@@ -1859,6 +1837,7 @@ map_node_collision_new(module_state *state,
     if (node == NULL) {
         return NULL;
     }
+    TRACK(state, node);
 
     node->interpreter_id = state->interpreter_id;
     node->node_kind = N_COLLISION;
@@ -2218,7 +2197,11 @@ map_node_collision_traverse(MapNode_Collision *self,
 {
     /* Collision's tp_traverse */
 
+    #ifdef DEBUG
     module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
+    USED_IN_DEBUG(state);
+    #endif
+
     MAYBE_VISIT(state, Py_TYPE(self));
 
     Py_ssize_t i;
@@ -2235,7 +2218,10 @@ map_node_collision_dealloc(MapNode_Collision *self)
     /* Collision's tp_dealloc */
 
     PyTypeObject *tp = Py_TYPE(self);
+
+    #ifdef DEBUG
     module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
+    #endif
 
     Py_ssize_t len = Py_SIZE(self);
 
@@ -2305,6 +2291,7 @@ map_node_array_new(module_state *state, Py_ssize_t count, uint64_t mutid)
     if (node == NULL) {
         return NULL;
     }
+    TRACK(state, node);
 
     node->interpreter_id = state->interpreter_id;
     node->node_kind = N_ARRAY;
@@ -3225,6 +3212,7 @@ map_alloc(module_state *state)
     if (o == NULL) {
         return NULL;
     }
+    TRACK(state, o);
     #ifndef Py_TPFLAGS_MANAGED_WEAKREF
     o->h_weakreflist = NULL;
     #endif
@@ -3301,7 +3289,10 @@ map_baseiter_tp_dealloc(MapIterator *it)
 static int
 map_baseiter_tp_traverse(MapIterator *it, visitproc visit, void *arg)
 {
+    #ifdef DEBUG
     module_state *state = MemHive_GetModuleStateByObj((PyObject *)it);
+    USED_IN_DEBUG(state);
+    #endif
     MAYBE_VISIT(state, Py_TYPE(it));
     MAYBE_VISIT(state, it->mi_obj);
     return 0;
@@ -3356,7 +3347,10 @@ map_baseview_tp_dealloc(MapView *view)
 static int
 map_baseview_tp_traverse(MapView *view, visitproc visit, void *arg)
 {
+    #ifdef DEBUG
     module_state *state = MemHive_GetModuleStateByObj((PyObject *)view);
+    USED_IN_DEBUG(state);
+    #endif
     MAYBE_VISIT(state, Py_TYPE(view));
     MAYBE_VISIT(state, view->mv_obj);
     return 0;
@@ -3378,6 +3372,7 @@ map_baseview_newiter(module_state *state,
     if (iter == NULL) {
         return NULL;
     }
+    TRACK(state, iter);
 
     iter->interpreter_id = state->interpreter_id;
 
@@ -3408,6 +3403,7 @@ map_baseview_new(module_state *state,
     if (view == NULL) {
         return NULL;
     }
+    TRACK(state, view);
 
     view->interpreter_id = state->interpreter_id;
 
@@ -3880,6 +3876,7 @@ map_py_mutate(MapObject *self, PyObject *args)
     if (o == NULL) {
         return NULL;
     }
+    TRACK(state, o);
     #ifndef Py_TPFLAGS_MANAGED_WEAKREF
     o->m_weakreflist = NULL;
     #endif

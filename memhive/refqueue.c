@@ -1,4 +1,6 @@
 #include "refqueue.h"
+#include "track.h"
+#include "module.h"
 
 #define MAX_REUSE 100
 
@@ -92,7 +94,7 @@ MemHive_RefQueue_Dec(RefQueue *queue, PyObject *obj)
     return push_incdec(queue, obj, 0);
 }
 
-int MemHive_RefQueue_Run(RefQueue *q)
+int MemHive_RefQueue_Run(RefQueue *q, module_state *state)
 {
     struct item* incs;
     struct item* decs;
@@ -110,6 +112,7 @@ int MemHive_RefQueue_Run(RefQueue *q)
     struct item* to_reuse = NULL;
 
     while (incs != NULL) {
+        assert(IS_LOCALLY_TRACKED(state, incs->obj));
         Py_INCREF(incs->obj);
         incs->obj = NULL;
 
@@ -122,6 +125,7 @@ int MemHive_RefQueue_Run(RefQueue *q)
     }
 
     while (decs != NULL) {
+        assert(IS_LOCALLY_TRACKED(state, decs->obj));
         Py_DECREF(decs->obj);
         decs->obj = NULL;
 

@@ -1,5 +1,8 @@
 #include <stdint.h>
+
 #include "memhive.h"
+#include "module.h"
+#include "track.h"
 
 
 static int
@@ -58,6 +61,10 @@ static PyObject *
 memhive_sub_py_put(MemHiveSub *o, PyObject *val)
 {
     MemQueue *q = ((MemHive *)o->hive)->out;
+    #ifdef DEBUG
+    module_state *state = MemHive_GetModuleStateByObj((PyObject*)o);
+    #endif
+    TRACK(state, val);
     Py_INCREF(val);
     return MemQueue_Put(q, (PyObject*)o, val);
 }
@@ -91,7 +98,8 @@ memhive_sub_py_get(MemHiveSub *o, PyObject *args)
 static PyObject *
 memhive_sub_py_do_refs(MemHiveSub *o, PyObject *args)
 {
-    if (MemHive_RefQueue_Run(o->subs_refs)) {
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)o);
+    if (MemHive_RefQueue_Run(o->subs_refs, state)) {
         return NULL;
     }
     Py_RETURN_NONE;

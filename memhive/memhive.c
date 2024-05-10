@@ -1,6 +1,7 @@
 #include "memhive.h"
 #include "module.h"
 #include "queue.h"
+#include "track.h"
 
 
 static int
@@ -205,8 +206,13 @@ MemHive_Get(module_state *calling_state, MemHive *hive, PyObject *key)
 static PyObject *
 memhive_py_put(MemHive *o, PyObject *val)
 {
+    #ifdef DEBUG
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)o);
+    #endif
+
     MemQueue *q = o->in;
     Py_INCREF(val);
+    TRACK(state, val);
     return MemQueue_Put(q, (PyObject*)o, val);
 }
 
@@ -245,11 +251,13 @@ memhive_py_close_subs_intake(MemHive *o, PyObject *args)
 static PyObject *
 memhive_py_do_refs(MemHive *o, PyObject *args)
 {
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)o);
+
     pthread_mutex_lock(&o->subs_list_mut);
 
     SubsList *lst = o->subs_list;
     while (lst != NULL) {
-        if (MemHive_RefQueue_Run(lst->sub->main_refs)) {
+        if (MemHive_RefQueue_Run(lst->sub->main_refs, state)) {
             pthread_mutex_unlock(&o->subs_list_mut);
             return NULL;
         }
