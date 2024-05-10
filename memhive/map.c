@@ -273,15 +273,13 @@ Further Reading
      || IS_COLLISION_NODE_SLOW(state, o))
 
 
-#define EXT(o) o
-
-#define IS_ARRAY_NODE(state, node) \
+#define IS_ARRAY_NODE(state, node)                                            \
     (((MapNode*)(node))->node_kind == N_ARRAY)
 
-#define IS_BITMAP_NODE(state, node) \
+#define IS_BITMAP_NODE(state, node)                                           \
     (((MapNode*)(node))->node_kind == N_BITMAP)
 
-#define IS_COLLISION_NODE(state, node) \
+#define IS_COLLISION_NODE(state, node)                                        \
     (((MapNode*)(node))->node_kind == N_COLLISION)
 
 #define IS_NODE(state, node)                                                  \
@@ -4954,8 +4952,8 @@ NewMapProxy(module_state *calling_state, PyObject *map)
     }
 
     // here goes nothing...
-    o->h_root = ((MapObject *)EXT(map))->h_root;
-    o->h_count = ((MapObject *)EXT(map))->h_count;
+    o->h_root = ((MapObject *)map)->h_root;
+    o->h_count = ((MapObject *)map)->h_count;
 
     NODE_INCREF(calling_state, o->h_root);
 
