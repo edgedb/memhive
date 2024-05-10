@@ -155,7 +155,9 @@ enable_object_tracking(PyObject *m)
 {
     module_state *state = MemHive_GetModuleState(m);
     state->debug_tracking = 1;
-    if (PySet_Clear(state->debug_objects)) abort();
+    Py_CLEAR(state->debug_objects);
+    state->debug_objects = PyList_New(0);
+    assert(state->debug_objects != NULL);
     if (PySet_Clear(state->debug_objects_ids)) abort();
     Py_RETURN_NONE;
 }
@@ -165,7 +167,9 @@ disable_object_tracking(PyObject *m)
 {
     module_state *state = MemHive_GetModuleState(m);
     state->debug_tracking = 0;
-    if (PySet_Clear(state->debug_objects)) abort();
+    Py_CLEAR(state->debug_objects);
+    state->debug_objects = PyList_New(0);
+    assert(state->debug_objects != NULL);
     if (PySet_Clear(state->debug_objects_ids)) abort();
     Py_RETURN_NONE;
 }
@@ -192,7 +196,7 @@ module_exec(PyObject *m)
 
     #ifdef DEBUG
     state->debug_tracking = 0;
-    state->debug_objects = PySet_New(NULL);
+    state->debug_objects = PyList_New(0);
     assert(state->debug_objects != NULL);
     state->debug_objects_ids = PySet_New(NULL);
     assert(state->debug_objects_ids != NULL);

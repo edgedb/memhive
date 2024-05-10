@@ -287,11 +287,13 @@ Further Reading
         IS_BITMAP_NODE(state, node) || IS_COLLISION_NODE(state, node))
 
 
-#define MY_NODE(state, node)                                                  \
+#define IS_NODE_LOCAL(state, node)                                            \
     (((MapNode *)(node))->interpreter_id == (state)->interpreter_id)
 
 #define MAYBE_VISIT(state, obj)                                               \
-    if (obj != NULL && (!IS_NODE_SLOW(state, obj) || MY_NODE(state, obj))) {  \
+    if (obj != NULL && (                                                      \
+        !IS_NODE_SLOW(state, obj) || IS_NODE_LOCAL(state, obj)                \
+    )) {                                                                      \
         Py_VISIT(obj);                                                        \
     }
 
@@ -300,7 +302,7 @@ Further Reading
         MapNode *_n = (MapNode*)(node);                                       \
         module_state *_s = state;                                             \
         assert(IS_NODE_SLOW(state, _n));                                      \
-        if (MY_NODE(_s, _n)) {                                                \
+        if (IS_NODE_LOCAL(_s, _n)) {                                          \
             Py_IncRef((PyObject*)_n);                                         \
         } else {                                                              \
             if (_s->sub != NULL) {                                            \
@@ -364,10 +366,35 @@ Further Reading
     } while(0)
 
 #ifdef DEBUG
+    static int
+    debug_is_local_object(module_state *state, PyObject *obj)
+    {
+        if (!IS_TRACKABLE(state, obj)) {
+            // really we have no idea in this case, so just say yes.
+            return 1;
+        }
+
+        if (!IS_TRACKING(state)) {
+            // tracking is disabled, hence nothing to do here.
+            return 1;
+        }
+
+        PyObject *id = PyLong_FromVoidPtr(obj);
+        assert(id != NULL);
+        int is_local = PySet_Contains(state->debug_objects_ids, id);
+        Py_DecRef(id);
+        assert(is_local >= 0);
+        return is_local;
+    }
+
+    #define _ENSURE_LOCAL(state, o)                                            \
+        do { assert(debug_is_local_object(state, (PyObject *)o)); } while(0)
+
     #define INCREF(state, o)                                                  \
         do {                                                                  \
             assert(o != NULL);                                                \
             assert(!IS_NODE_SLOW(state, o));                                  \
+            _ENSURE_LOCAL(state, o);                                          \
             Py_IncRef((PyObject*)o);                                          \
         } while(0)
 
@@ -375,24 +402,28 @@ Further Reading
         do {                                                                  \
             assert(o != NULL);                                                \
             assert(!IS_NODE_SLOW(state, o));                                  \
+            _ENSURE_LOCAL(state, o);                                          \
             Py_DecRef((PyObject*)o);                                          \
         } while(0)
 
     #define XINCREF(state, o)                                                 \
         if (o != NULL) {                                                      \
             assert(!IS_NODE_SLOW(state, o));                                  \
+            _ENSURE_LOCAL(state, o);                                          \
             Py_IncRef((PyObject*)o);                                          \
         } while(0)
 
     #define XDECREF(state, o)                                                 \
         if (o != NULL) {                                                      \
             assert(!IS_NODE_SLOW(state, o));                                  \
+            _ENSURE_LOCAL(state, o);                                          \
             Py_DecRef((PyObject*)o);                                          \
         } while(0)
 
     #define CLEAR(state, o)                                                   \
         if (o != NULL) {                                                      \
             assert(!IS_NODE_SLOW(state, o));                                  \
+            _ENSURE_LOCAL(state, o);                                          \
             Py_DecRef((PyObject*)o);                                          \
             o = NULL;                                                         \
         } while(0)
@@ -400,6 +431,7 @@ Further Reading
     #define SETREF(state, dst, src)                                           \
         do {                                                                  \
             assert(dst != NULL && !IS_NODE_SLOW(state, dst));                 \
+            _ENSURE_LOCAL(state, dst);                                        \
             Py_DecRef((PyObject*)dst);                                        \
             assert(src == NULL || !IS_NODE_SLOW(state, src));                 \
             dst = src;                                                        \
@@ -407,7 +439,9 @@ Further Reading
 
     #define XSETREF(state, dst, src)                                          \
         do {                                                                  \
-            assert(dst == NULL || !IS_NODE_SLOW(state, dst));                 \
+            assert(dst == NULL || (                                           \
+                !IS_NODE_SLOW(state, dst) && debug_is_local_object(state, dst)\
+            ));                                                               \
             Py_DecRef((PyObject*)dst);                                        \
             assert(src == NULL || !IS_NODE_SLOW(state, src));                 \
             dst = src;                                                        \
@@ -611,30 +645,20 @@ map_update(module_state *state, uint64_t mutid, MapObject *o, PyObject *src);
 #ifdef DEBUG
 
 static int
-is_right_object(module_state *state, PyObject *obj, PyObject *node)
+debug_is_local_object_to_node(
+    module_state *state, PyObject *obj, PyObject *node)
 {
-    // Check of "obj" is placed correctly, i.e.
-    //    - there must be no sitiation when a scalar from main interp
-    //      belongs to a node from another
-    //    - and vice versa
-
-    if (!IS_GENERALLY_TRACKABLE(obj) || state->interpreter_id == 0) {
+    if (!IS_TRACKABLE(state, obj)) {
         // really we have no idea in this case, so just say yes.
         return 1;
     }
 
-    if (!state->debug_tracking) {
+    if (!IS_TRACKING(state)) {
         // tracking is disabled, hence nothing to do here.
         return 1;
     }
 
-    int my_node = MY_NODE(state, node);
-    PyObject *id = PyLong_FromVoidPtr(obj);
-    assert(id != NULL);
-    int is_my = PySet_Contains(state->debug_objects_ids, id);
-    CLEAR(state, id);
-    assert(is_my >= 0);
-    return is_my == my_node;
+    return debug_is_local_object(state, obj) == IS_NODE_LOCAL(state, node);
 }
 
 static void
@@ -645,7 +669,8 @@ map_node_bitmap_validate(module_state *state, MapNode_Bitmap *node)
             // key
             if (node->b_array[i] != NULL) {
                 assert(
-                    is_right_object(state, node->b_array[i], (PyObject *)node)
+                    debug_is_local_object_to_node(
+                        state, node->b_array[i], (PyObject *)node)
                 );
             }
         } else {
@@ -654,7 +679,8 @@ map_node_bitmap_validate(module_state *state, MapNode_Bitmap *node)
                 // this is a value for a non-NULL key, so it
                 // must be a scalar value (not a node)
                 assert(
-                    is_right_object(state, node->b_array[i], (PyObject *)node)
+                    debug_is_local_object_to_node(
+                        state, node->b_array[i], (PyObject *)node)
                 );
             } else {
                 assert(IS_NODE_SLOW(state, node->b_array[i]));
@@ -681,7 +707,8 @@ map_node_collision_validate(module_state *state, MapNode_Collision *node)
 {
     for (Py_ssize_t i = 0; i < Py_SIZE(node); i++) {
         assert(
-            is_right_object(state, node->c_array[i], (PyObject *)node)
+            debug_is_local_object_to_node(
+                state, node->c_array[i], (PyObject *)node)
         );
     }
 }
@@ -907,7 +934,7 @@ map_node_bitmap_new(module_state *state, Py_ssize_t size, uint64_t mutid)
 
     if (size == 0 && mutid == 0) {
         assert(state->empty_bitmap_node != NULL);
-        assert(MY_NODE(state, state->empty_bitmap_node));
+        assert(IS_NODE_LOCAL(state, state->empty_bitmap_node));
         NODE_INCREF(state, state->empty_bitmap_node);
         return (MapNode *)state->empty_bitmap_node;
     }
@@ -929,7 +956,7 @@ map_node_bitmap_copyels(module_state *state,
                         Py_ssize_t end,
                         Py_ssize_t offset)
 {
-    int8_t my_from = MY_NODE(state, from);
+    int8_t local_from = IS_NODE_LOCAL(state, from);
     assert(start >= 0);
     assert(end <= Py_SIZE(from));
     assert(end + offset <= Py_SIZE(to));
@@ -937,7 +964,7 @@ map_node_bitmap_copyels(module_state *state,
         if (i % 2 == 0) {
             // key
             if (from->b_array[i] != NULL) {
-                if (my_from) {
+                if (local_from) {
                     // object must be from our interp
                     to->b_array[i+offset] = from->b_array[i];
                     INCREF(state, to->b_array[i+offset]);
@@ -959,7 +986,7 @@ map_node_bitmap_copyels(module_state *state,
                 NODE_INCREF(state, from->b_array[i]);
             } else {
                 // value is an object (not a node!)
-                if (my_from) {
+                if (local_from) {
                     // object must be from our interp
                     to->b_array[i+offset] = from->b_array[i];
                     INCREF(state, to->b_array[i+offset]);
@@ -1087,7 +1114,7 @@ map_node_new_bitmap_or_collision(module_state *state,
             return NULL;
         }
 
-        assert(MY_NODE(state, n2));
+        assert(IS_NODE_LOCAL(state, n2));
         VALIDATE_NODE(state, n2);
 
         n = map_node_assoc(
@@ -1136,7 +1163,7 @@ map_node_bitmap_assoc(module_state *state,
      - The index of key/val slots.
     */
 
-    uint8_t my_node = MY_NODE(state, self);
+    uint8_t local_node = IS_NODE_LOCAL(state, self);
 
     if (self->b_bitmap & bit) {
         /* The key is set in this node */
@@ -1172,7 +1199,7 @@ map_node_bitmap_assoc(module_state *state,
             }
 
             if (mutid != 0 && self->b_mutid == mutid) {
-                assert(my_node);
+                assert(local_node);
                 // We won't allow passing mutation objects between interpreters.
                 // If we have the same mutid, it means that we must be mutating
                 // a node that we've created in this subinterpreter.
@@ -1212,7 +1239,7 @@ map_node_bitmap_assoc(module_state *state,
 
             /* We're setting a new value for the key we had before. */
             if (mutid != 0 && self->b_mutid == mutid) {
-                assert(my_node);
+                assert(local_node);
                 // We won't allow passing mutation objects between interpreters.
                 // If we have the same mutid, it means that we must be mutating
                 // a node that we've created in this subinterpreter.
@@ -1247,7 +1274,7 @@ map_node_bitmap_assoc(module_state *state,
            a new Bitmap node.
         */
 
-        if (!my_node) {
+        if (!local_node) {
             key_or_null = COPY_OBJ(state, key_or_null);
             val_or_node = COPY_OBJ(state, val_or_node);
         }
@@ -1261,7 +1288,7 @@ map_node_bitmap_assoc(module_state *state,
             self->b_mutid
         );
 
-        if (!my_node) {
+        if (!local_node) {
             CLEAR(state, key_or_null);
             CLEAR(state, val_or_node);
         }
@@ -1271,7 +1298,7 @@ map_node_bitmap_assoc(module_state *state,
         }
 
         if (mutid != 0 && self->b_mutid == mutid) {
-            assert(my_node);
+            assert(local_node);
             SETREF(state, self->b_array[key_idx], NULL);
             DECREF(state, self->b_array[val_idx]);
             self->b_array[val_idx] = (PyObject *)sub_node;
@@ -1523,7 +1550,7 @@ map_node_bitmap_without(module_state *state,
                         */
 
                         if (mutid != 0 && self->b_mutid == mutid) {
-                            assert(MY_NODE(state, self));
+                            assert(IS_NODE_LOCAL(state, self));
                             target = self;
                             NODE_INCREF(state, target);
                         }
@@ -1746,11 +1773,13 @@ map_node_bitmap_dump(module_state *state,
     if (tmp1 == NULL) {
         goto error;
     }
+    TRACK(state, tmp1);
     tmp2 = _PyLong_Format(tmp1, 2);
     DECREF(state, tmp1);
     if (tmp2 == NULL) {
         goto error;
     }
+    TRACK(state, tmp2);
     if (_map_dump_format(writer, "bitmap=%S id=%p):\n", tmp2, node)) {
         DECREF(state, tmp2);
         goto error;
@@ -1883,7 +1912,7 @@ map_node_collision_assoc(module_state *state,
         map_find_t found;
         MapNode_Collision *new_node;
         Py_ssize_t i;
-        int my_node = MY_NODE(state, self);
+        int local_node = IS_NODE_LOCAL(state, self);
 
         /* Let's try to lookup the new 'key', maybe we already have it. */
         found = map_node_collision_find_index(state, self, key, &key_idx);
@@ -1904,7 +1933,7 @@ map_node_collision_assoc(module_state *state,
                 }
 
                 for (i = 0; i < Py_SIZE(self); i++) {
-                    if (my_node) {
+                    if (local_node) {
                         INCREF(state, self->c_array[i]);
                         new_node->c_array[i] = self->c_array[i];
                     } else {
@@ -1923,7 +1952,7 @@ map_node_collision_assoc(module_state *state,
                 return (MapNode *)new_node;
 
             case F_FOUND_EXT:
-                assert(!my_node);
+                assert(!local_node);
             case F_FOUND:
                 /* There's a key which is equal to the key we are adding. */
 
@@ -1945,7 +1974,7 @@ map_node_collision_assoc(module_state *state,
                    a new value. */
 
                 if (mutid != 0 && self->c_mutid == mutid) {
-                    assert(my_node);
+                    assert(local_node);
                     new_node = self;
                     NODE_INCREF(state, self);
                 }
@@ -1960,7 +1989,7 @@ map_node_collision_assoc(module_state *state,
 
                     /* Copy all elements of the old node to the new one. */
                     for (i = 0; i < Py_SIZE(self); i++) {
-                        if (my_node) {
+                        if (local_node) {
                             INCREF(state, self->c_array[i]);
                             new_node->c_array[i] = self->c_array[i];
                         } else {
@@ -2035,7 +2064,7 @@ map_node_collision_without(module_state *state,
     map_find_t found = map_node_collision_find_index(
         state, self, key, &key_idx);
 
-    int my_node = MY_NODE(state, self);
+    int local_node = IS_NODE_LOCAL(state, self);
 
     switch (found) {
         case F_ERROR:
@@ -2045,7 +2074,7 @@ map_node_collision_without(module_state *state,
             return W_NOT_FOUND;
 
         case F_FOUND_EXT:
-            assert(!my_node);
+            assert(!local_node);
         case F_FOUND:
             assert(key_idx >= 0);
             assert(key_idx < Py_SIZE(self));
@@ -2073,7 +2102,7 @@ map_node_collision_without(module_state *state,
                 }
 
                 if (key_idx == 0) {
-                    if (my_node) {
+                    if (local_node) {
                         INCREF(state, self->c_array[2]);
                         node->b_array[0] = self->c_array[2];
                         INCREF(state, self->c_array[3]);
@@ -2085,7 +2114,7 @@ map_node_collision_without(module_state *state,
                 }
                 else {
                     assert(key_idx == 2);
-                    if (my_node) {
+                    if (local_node) {
                         INCREF(state, self->c_array[0]);
                         node->b_array[0] = self->c_array[0];
                         INCREF(state, self->c_array[1]);
@@ -2114,7 +2143,7 @@ map_node_collision_without(module_state *state,
 
             /* Copy all other keys from `self` to `new` */
             Py_ssize_t i;
-            if (my_node) {
+            if (local_node) {
                 for (i = 0; i < key_idx; i++) {
                     INCREF(state, self->c_array[i]);
                     new->c_array[i] = self->c_array[i];
@@ -2192,6 +2221,7 @@ map_node_collision_dealloc(MapNode_Collision *self)
     /* Collision's tp_dealloc */
 
     PyTypeObject *tp = Py_TYPE(self);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
 
     Py_ssize_t len = Py_SIZE(self);
 
@@ -2544,7 +2574,7 @@ map_node_array_without(module_state *state,
                         PyObject *key = child->b_array[0];
                         PyObject *val = child->b_array[1];
 
-                        if (MY_NODE(state, child)) {
+                        if (IS_NODE_LOCAL(state, child)) {
                             INCREF(state, key);
                             new->b_array[new_i] = key;
                             INCREF(state, val);
@@ -4089,6 +4119,7 @@ map_reduce(MapObject *self)
     }
 
     module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
+    TRACK(state, dict);
 
     map_iterator_init(state, &iter, self->h_root);
     do {
@@ -4107,6 +4138,7 @@ map_reduce(MapObject *self)
 
     PyObject *args = PyTuple_Pack(1, dict);
     DECREF(state, dict);
+    TRACK(state, args);
     if (args == NULL) {
         return NULL;
     }
@@ -4277,6 +4309,7 @@ map_node_update_from_dict(module_state *state,
     if (it == NULL) {
         return -1;
     }
+    TRACK(state, it);
 
     MapNode *last_root;
     Py_ssize_t last_count;
@@ -4972,6 +5005,8 @@ NewMapProxy(module_state *state, PyObject *map)
 
     NODE_INCREF(state, o->h_root);
 
+    TRACK(state, (PyObject *)o);
+
     return (PyObject *)o;
 }
 
@@ -5120,6 +5155,8 @@ CopyMapProxy(module_state *state, PyObject *map)
     }
 
     o->h_root = new_root;
+
+    VALIDATE_NODE(state, new_root);
 
     return (PyObject *)o;
 }

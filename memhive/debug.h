@@ -8,7 +8,10 @@
 #endif
 
 #ifdef DEBUG
-#define IS_GENERALLY_TRACKABLE(o)                                              \
+#define IS_TRACKING(state)                                                     \
+    (state->debug_tracking != 0)
+
+#define IS_TRACKABLE(state, o)                                                 \
     (!(                                                                        \
         o == Py_None || o == Py_True || o == Py_False || o == Py_Ellipsis      \
         || _Py_IsImmortal(o)                                                   \
@@ -16,18 +19,34 @@
 
 #define TRACK(state, o)                                                        \
     do {                                                                       \
-        int tracking = state->debug_tracking;                                  \
-        if (tracking && IS_GENERALLY_TRACKABLE(o)) {                           \
+        assert(o != NULL);                                                     \
+        if (IS_TRACKING(state) && IS_TRACKABLE(state, o)) {                    \
             assert(o != NULL);                                                 \
-            if (PySet_Add(state->debug_objects, o)) abort();                   \
             PyObject *id = PyLong_FromVoidPtr(o);                              \
             if (id == NULL) abort();                                           \
-            if (PySet_Add(state->debug_objects_ids, id)) abort();              \
+            if (PySet_Contains(state->debug_objects_ids, id) == 0) {           \
+                if (PyList_Append(state->debug_objects, o)) abort();           \
+                if (PySet_Add(state->debug_objects_ids, id)) abort();          \
+            }                                                                  \
             Py_DecRef(id);                                                     \
         }                                                                      \
     } while (0);
 #else
 #define TRACK(state, o)
+#endif
+
+#ifdef DEBUG
+#define PO(what, obj)                                                          \
+    do {                                                                       \
+        printf(what);                                                          \
+        printf(" ");                                                           \
+        if (obj != NULL) {                                                     \
+            PyObject_Print((PyObject*)obj, stdout, 0);                         \
+        } else {                                                               \
+            printf("!NULL!");                                                  \
+        }                                                                      \
+        printf("\n");                                                          \
+    } while(0)
 #endif
 
 #endif
