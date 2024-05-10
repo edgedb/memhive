@@ -22,69 +22,6 @@ from ._memhive import _MemQueue
 from ._memhive import ClosedQueueError
 
 
-class _Mem(_MemHive):
-    pass
-
-
-class MemHive:
-
-    def __init__(self):
-        self._ctx = None
-
-    def __enter__(self):
-        if self._ctx is not None:
-            raise RuntimeError
-        self._ctx = MemHiveContext(self)
-        return self._ctx
-
-    def __exit__(self, *e):
-        self._ctx._join()
-
-
-class MemHiveContext:
-
-    def __init__(self, hive):
-        self._hive = hive
-        self._mem = _Mem()
-
-    def __getitem__(self, key):
-        return self._mem[key]
-
-    def __setitem__(self, key, val):
-        self._mem[key] = val
-
-    def run(self, code: str):
-        def runner(code):
-            code = textwrap.dedent('''\
-            import sys
-            sys.path = ''' + repr(sys.path) + '''
-
-            from memhive._memhive import _MemHiveSub
-            mem = _MemHiveSub(''' + repr(id(self._mem)) + ''')
-            \n''') + code
-
-            sub = subint.create(isolated=True)
-            try:
-                subint.run_string(sub, code)
-            except Exception as ex:
-                print('!!-1', type(ex), '|', ex)
-                raise
-            finally:
-                subint.destroy(sub)
-
-        thread = threading.Thread(target=runner, args=(code,))
-        try:
-            thread.start()
-        except Exception as ex:
-            print('!!-2', type(ex), '|', ex)
-            raise
-        finally:
-            thread.join()
-
-    def _join(self):
-        pass
-
-
 class Executor:
     def __init__(self, *, nworkers: int=8):
         self._mem = _MemHive()
@@ -103,12 +40,15 @@ class Executor:
             import random
             sys.path = ''' + repr(sys.path) + '''
 
-            from memhive._memhive import ClosedQueueError
-            from memhive._memhive import _MemHiveSub
-            mem = _MemHiveSub(''' + repr(id(self._mem)) + ''')
+            import memhive._memhive as chive
+            mem = chive._MemHiveSub(''' + repr(id(self._mem)) + ''')
+
+            is_debug = hasattr(chive, 'enable_object_tracking')
 
             try:
                 while True:
+                    if is_debug:
+                        chive.enable_object_tracking()
                     mem.do_refs()
 
                     p = mem.get()
@@ -120,7 +60,11 @@ class Executor:
 
                     ret = (idx, func(*args))
                     mem.put(ret)
-            except ClosedQueueError:
+
+                    if is_debug:
+                        chive.disable_object_tracking()
+
+            except chive.ClosedQueueError:
                 pass
             finally:
                 mem.do_refs()

@@ -668,6 +668,8 @@ map_node_bitmap_validate(module_state *state, MapNode_Bitmap *node)
                 assert(
                     is_right_object(state, node->b_array[i], (PyObject *)node)
                 );
+            } else {
+                assert(IS_NODE_SLOW(state, node->b_array[i]));
             }
         }
     }
@@ -1367,14 +1369,27 @@ map_node_bitmap_assoc(module_state *state,
                             goto fin;
                         }
 
+                        PyObject *bk = self->b_array[j];
+                        PyObject *bv = self->b_array[j + 1];
+
+                        if (bk != NULL) {
+                            bk = COPY_OBJ(state, bk);
+                            bv = COPY_OBJ(state, bv);
+                        }
+
                         new_node->a_array[i] = map_node_assoc(
                             state,
                             empty, shift + 5,
                             rehash,
-                            self->b_array[j],
-                            self->b_array[j + 1],
+                            bk,
+                            bv,
                             added_leaf,
                             mutid);
+
+                        if (bk != NULL) {
+                            CLEAR(state, bk);
+                            CLEAR(state, bv);
+                        }
 
                         if (new_node->a_array[i] == NULL) {
                             goto fin;
@@ -1890,6 +1905,7 @@ map_node_collision_assoc(module_state *state,
                 new_node->c_array[i + 1] = val;
 
                 *added_leaf = 1;
+                VALIDATE_NODE(state, new_node);
                 return (MapNode *)new_node;
 
             case F_FOUND:
@@ -1902,6 +1918,7 @@ map_node_collision_assoc(module_state *state,
                 if (self->c_array[val_idx] == val) {
                     /* We're setting a key/value pair that's already set. */
                     NODE_INCREF(state, self);
+                    VALIDATE_NODE(state, self);
                     return (MapNode *)self;
                 }
 
@@ -1933,6 +1950,7 @@ map_node_collision_assoc(module_state *state,
                 INCREF(state, val);
                 new_node->c_array[val_idx] = val;
 
+                VALIDATE_NODE(state, new_node);
                 return (MapNode *)new_node;
 
             default:
@@ -1959,9 +1977,13 @@ map_node_collision_assoc(module_state *state,
         NODE_INCREF(state, self);
         new_node->b_array[1] = (PyObject*) self;
 
+        VALIDATE_NODE(state, new_node);
+
         assoc_res = map_node_bitmap_assoc(
             state, new_node, shift, hash, key, val, added_leaf, mutid);
         NODE_DECREF(state, new_node);
+
+        VALIDATE_NODE(state, assoc_res);
         return assoc_res;
     }
 }
@@ -2269,6 +2291,7 @@ map_node_array_assoc(module_state *state,
             state,
             empty,
             shift + 5, hash, key, val, added_leaf, mutid);
+        VALIDATE_NODE(state, child_node);
         NODE_DECREF(state, empty);
         if (child_node == NULL) {
             return NULL;
