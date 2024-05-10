@@ -1875,6 +1875,7 @@ map_node_collision_assoc(module_state *state,
         map_find_t found;
         MapNode_Collision *new_node;
         Py_ssize_t i;
+        int my_node = MY_NODE(state, self);
 
         /* Let's try to lookup the new 'key', maybe we already have it. */
         found = map_node_collision_find_index(state, self, key, &key_idx);
@@ -1895,8 +1896,13 @@ map_node_collision_assoc(module_state *state,
                 }
 
                 for (i = 0; i < Py_SIZE(self); i++) {
-                    INCREF(state, self->c_array[i]);
-                    new_node->c_array[i] = self->c_array[i];
+                    if (my_node) {
+                        INCREF(state, self->c_array[i]);
+                        new_node->c_array[i] = self->c_array[i];
+                    } else {
+                        new_node->c_array[i] =
+                            COPY_OBJ(state, self->c_array[i]);
+                    }
                 }
 
                 INCREF(state, key);
@@ -1908,6 +1914,8 @@ map_node_collision_assoc(module_state *state,
                 VALIDATE_NODE(state, new_node);
                 return (MapNode *)new_node;
 
+            case F_FOUND_EXT:
+                assert(!my_node);
             case F_FOUND:
                 /* There's a key which is equal to the key we are adding. */
 
@@ -1917,6 +1925,9 @@ map_node_collision_assoc(module_state *state,
 
                 if (self->c_array[val_idx] == val) {
                     /* We're setting a key/value pair that's already set. */
+                    // Theoretically this can happen even on remote node,
+                    // e.g. val is `True`. No reason to recreate the node in
+                    // that case.
                     NODE_INCREF(state, self);
                     VALIDATE_NODE(state, self);
                     return (MapNode *)self;
@@ -1926,6 +1937,7 @@ map_node_collision_assoc(module_state *state,
                    a new value. */
 
                 if (mutid != 0 && self->c_mutid == mutid) {
+                    assert(my_node);
                     new_node = self;
                     NODE_INCREF(state, self);
                 }
@@ -1940,8 +1952,13 @@ map_node_collision_assoc(module_state *state,
 
                     /* Copy all elements of the old node to the new one. */
                     for (i = 0; i < Py_SIZE(self); i++) {
-                        INCREF(state, self->c_array[i]);
-                        new_node->c_array[i] = self->c_array[i];
+                        if (my_node) {
+                            INCREF(state, self->c_array[i]);
+                            new_node->c_array[i] = self->c_array[i];
+                        } else {
+                            new_node->c_array[i] =
+                                COPY_OBJ(state, self->c_array[i]);
+                        }
                     }
                 }
 
