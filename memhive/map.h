@@ -130,5 +130,6 @@ extern PyType_Spec BitmapNode_TypeSpec;
 extern PyType_Spec CollisionNode_TypeSpec;
 
 PyObject * NewMapProxy(module_state *, PyObject *);
+PyObject * CopyMapProxy(module_state *, PyObject *);
 
 #endif

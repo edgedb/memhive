@@ -623,6 +623,11 @@ is_right_object(module_state *state, PyObject *obj, PyObject *node)
         return 1;
     }
 
+    if (!state->debug_tracking) {
+        // tracking is disabled, hence nothing to do here.
+        return 1;
+    }
+
     int my_node = MY_NODE(state, node);
     PyObject *id = PyLong_FromVoidPtr(obj);
     assert(id != NULL);
@@ -635,10 +640,6 @@ is_right_object(module_state *state, PyObject *obj, PyObject *node)
 static void
 map_node_bitmap_validate(module_state *state, MapNode_Bitmap *node)
 {
-    if (!state->debug_tracking) {
-        return;
-    }
-
     for (Py_ssize_t i = 0; i < Py_SIZE(node); i++) {
         if (i % 2 == 0) {
             // key
@@ -787,7 +788,18 @@ new_mutid(module_state *state)
     // nanosecond precision (which should be enough) and
     // it might actually be quicker than messing with locks
     // (hey, we should benchmark that.)
-    return (uint64_t)_PyTime_GetMonotonicClock();
+    uint64_t mutid = (uint64_t)_PyTime_GetMonotonicClock();
+    if (mutid == 0) {
+        mutid = (uint64_t)_PyTime_GetMonotonicClock();
+    }
+    if (mutid == 0) {
+        // mutid=0 is special, that's what new nodes are created with.
+        // If we can't generate non-zero mutids we have a problem.
+        // Luckily this can only happen if Python's time API is
+        // malfunctioning, so let's pretend that can't happen.
+        abort();
+    }
+    return mutid;
 }
 
 
@@ -3592,7 +3604,7 @@ map_tp_init(MapObject *self, PyObject *args, PyObject *kwds)
     PyObject *arg = NULL;
     uint64_t mutid = 0;
 
-    if (!PyArg_UnpackTuple(args, "immutables.Map", 0, 1, &arg)) {
+    if (!PyArg_UnpackTuple(args, "memhive.Map", 0, 1, &arg)) {
         return -1;
     }
 
@@ -3932,14 +3944,14 @@ map_py_repr(BaseMapObject *m)
 
     if (MapMutation_Check(state, m)) {
         if (_PyUnicodeWriter_WriteASCIIString(
-                &writer, "immutables.MapMutation({", 24) < 0)
+                &writer, "memhive.MapMutation({", 21) < 0)
         {
             goto error;
         }
     }
     else {
         if (_PyUnicodeWriter_WriteASCIIString(
-                &writer, "immutables.Map({", 16) < 0)
+                &writer, "memhive.Map({", 13) < 0)
         {
             goto error;
         }
@@ -4169,7 +4181,7 @@ PyType_Slot Map_TypeSlots[] = {
 
 
 PyType_Spec Map_TypeSpec = {
-    .name = "immutables._map.Map",
+    .name = "memhive.Map",
     .basicsize = sizeof(MapObject),
     .itemsize = 0,
     .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC
@@ -4877,7 +4889,7 @@ PyType_Slot MapMutation_TypeSlots[] = {
 
 
 PyType_Spec MapMutation_TypeSpec = {
-    .name = "immutables._map.MapMutation",
+    .name = "memhive.MapMutation",
     .basicsize = sizeof(MapMutationObject),
     .itemsize = 0,
     .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC
@@ -4944,9 +4956,9 @@ PyType_Spec CollisionNode_TypeSpec = {
 
 
 PyObject *
-NewMapProxy(module_state *calling_state, PyObject *map)
+NewMapProxy(module_state *state, PyObject *map)
 {
-    MapObject *o = map_alloc(calling_state);
+    MapObject *o = map_alloc(state);
     if (o == NULL) {
         return NULL;
     }
@@ -4955,7 +4967,159 @@ NewMapProxy(module_state *calling_state, PyObject *map)
     o->h_root = ((MapObject *)map)->h_root;
     o->h_count = ((MapObject *)map)->h_count;
 
-    NODE_INCREF(calling_state, o->h_root);
+    // What are we even doing here otherwise
+    assert(state->interpreter_id != o->h_root->interpreter_id);
+
+    NODE_INCREF(state, o->h_root);
+
+    return (PyObject *)o;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+static PyObject *
+map_node_unproxy(module_state *state, MapNode *node);
+
+static PyObject *
+map_node_bitmap_unproxy(module_state *state, MapNode_Bitmap *node)
+{
+    if (node->interpreter_id == state->interpreter_id) {
+        Py_INCREF((PyObject *)node);
+        return (PyObject *)node;
+    }
+
+    MapNode_Bitmap *new_node = (MapNode_Bitmap*)map_node_bitmap_new(
+        state, Py_SIZE(node), 0);
+    if (new_node == NULL) {
+        return NULL;
+    }
+
+    for (Py_ssize_t i = 0; i < Py_SIZE(node); i++) {
+        if (i % 2 == 0) {
+            if (node->b_array[i] != NULL) {
+                PyObject *o = COPY_OBJ(state, node->b_array[i]);
+                if (o == NULL) {
+                    return NULL;
+                }
+                new_node->b_array[i] = o;
+            } else {
+                new_node->b_array[i] = NULL;
+            }
+        } else {
+            assert(node->b_array[i] != NULL);
+            if (node->b_array[i-1] == NULL) {
+                assert(IS_NODE_SLOW(state, node->b_array[i]));
+                PyObject *child = map_node_unproxy(
+                    state, (MapNode *)node->b_array[i]);
+                if (child == NULL) {
+                    return NULL;
+                }
+                new_node->b_array[i] = child;
+            } else {
+                assert(!IS_NODE_SLOW(state, node->b_array[i]));
+                PyObject *o = COPY_OBJ(state, node->b_array[i]);
+                if (o == NULL) {
+                    return NULL;
+                }
+                new_node->b_array[i] = o;
+            }
+        }
+    }
+
+    new_node->b_bitmap = node->b_bitmap;
+    return (PyObject *)new_node;
+}
+
+static PyObject *
+map_node_array_unproxy(module_state *state, MapNode_Array *node)
+{
+    if (node->interpreter_id == state->interpreter_id) {
+        Py_INCREF((PyObject *)node);
+        return (PyObject *)node;
+    }
+
+    MapNode_Array *new_node = (MapNode_Array *)map_node_array_new(
+        state, node->a_count, 0);
+    if (new_node == NULL) {
+        return NULL;
+    }
+
+    for (Py_ssize_t i = 0; i < HAMT_ARRAY_NODE_SIZE; i++) {
+        if (node->a_array[i] == NULL) {
+            continue;
+        }
+
+        assert(IS_NODE_SLOW(state, node->a_array[i]));
+        PyObject *child = map_node_unproxy(state, (MapNode *)node->a_array[i]);
+        if (child == NULL) {
+            return NULL;
+        }
+        new_node->a_array[i] = (MapNode *)child;
+    }
+
+    return (PyObject *)new_node;
+}
+
+static PyObject *
+map_node_collision_unproxy(module_state *state, MapNode_Collision *node)
+{
+    if (node->interpreter_id == state->interpreter_id) {
+        Py_INCREF((PyObject *)node);
+        return (PyObject *)node;
+    }
+
+    MapNode_Collision *new_node = (MapNode_Collision *)map_node_collision_new(
+        state, node->c_hash, Py_SIZE(node), 0);
+    if (new_node == NULL) {
+        return NULL;
+    }
+
+    for (Py_ssize_t i = 0; i < Py_SIZE(node); i++) {
+        assert(node->c_array[i] != NULL);
+        assert(!IS_NODE_SLOW(state, node->c_array[i]));
+        PyObject *o = COPY_OBJ(state, node->c_array[i]);
+        if (o == NULL) {
+            return NULL;
+        }
+        new_node->c_array[i] = o;
+    }
+
+    return (PyObject *)new_node;
+}
+
+static PyObject *
+map_node_unproxy(module_state *state, MapNode *node)
+{
+    if (IS_BITMAP_NODE(state, node)) {
+        return map_node_bitmap_unproxy(state, (MapNode_Bitmap *)node);
+    }
+    else if (IS_ARRAY_NODE(state, node)) {
+        return map_node_array_unproxy(state, (MapNode_Array *)node);
+    }
+    else {
+        assert(IS_COLLISION_NODE(state, node));
+        return map_node_collision_unproxy(state, (MapNode_Collision *)node);
+    }
+}
+
+
+PyObject *
+CopyMapProxy(module_state *state, PyObject *map)
+{
+    MapObject *o = map_alloc(state);
+    if (o == NULL) {
+        return NULL;
+    }
+
+    o->h_count = ((MapObject *)map)->h_count;
+
+    MapNode *root = ((MapObject *)map)->h_root;
+    MapNode *new_root = (MapNode *)map_node_unproxy(state, root);
+    if (new_root == NULL) {
+        return NULL;
+    }
+
+    o->h_root = new_root;
 
     return (PyObject *)o;
 }
