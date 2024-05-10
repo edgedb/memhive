@@ -261,15 +261,15 @@ Further Reading
 
 // IS_XXX_NODE_SLOW methods can be called on any PyObject, no matter
 // if it belongs to our subinterpreter or another one.
-#define IS_ARRAY_NODE_SLOW(state, o) \
+#define IS_ARRAY_NODE_SLOW(state, o)                                          \
     (o != NULL && strcmp(Py_TYPE(o)->tp_name, TYPENAME_ARRAY_NODE) == 0)
-#define IS_BITMAP_NODE_SLOW(state, o) \
+#define IS_BITMAP_NODE_SLOW(state, o)                                         \
     (o != NULL && strcmp(Py_TYPE(o)->tp_name, TYPENAME_BITMAP_NODE) == 0)
-#define IS_COLLISION_NODE_SLOW(state, o) \
+#define IS_COLLISION_NODE_SLOW(state, o)                                      \
     (o != NULL && strcmp(Py_TYPE(o)->tp_name, TYPENAME_COLLISION_NODE) == 0)
-#define IS_NODE_SLOW(state, o)             \
-    (IS_BITMAP_NODE_SLOW(state, o)         \
-     || IS_ARRAY_NODE_SLOW(state, o)       \
+#define IS_NODE_SLOW(state, o)                                                \
+    (IS_BITMAP_NODE_SLOW(state, o)                                            \
+     || IS_ARRAY_NODE_SLOW(state, o)                                          \
      || IS_COLLISION_NODE_SLOW(state, o))
 
 
@@ -292,21 +292,10 @@ Further Reading
 #define MY_NODE(state, node)                                                  \
     (((MapNode *)(node))->interpreter_id == (state)->interpreter_id)
 
-#define __MAYBE(WHAT, OR_WHAT, state, node)                                   \
-    if (node != NULL) {                                                       \
-        if (MY_NODE(state, node)) {                                           \
-            WHAT(node);                                                       \
-        } else {                                                              \
-            OR_WHAT(node);                                                    \
-        }                                                                     \
+#define MAYBE_VISIT(state, obj)                                               \
+    if (obj != NULL && (!IS_NODE_SLOW(state, obj) || MY_NODE(state, obj))) {  \
+        Py_VISIT(obj);                                                        \
     }
-
-#define _NOP(node)
-#define _RESET(node) do { (node) = NULL; } while (0);
-
-// #define MAYBE_CLEAR(state, node) __MAYBE(Py_CLEAR, _RESET, state, node)
-#define MAYBE_VISIT(state, node) __MAYBE(Py_VISIT, _NOP, state, node)
-
 
 #define NODE_INCREF(state, node)                                              \
     do {                                                                      \
@@ -377,53 +366,53 @@ Further Reading
     } while(0)
 
 #ifdef DEBUG
-    #define INCREF(state, o)                        \
-        do {                                        \
-            assert(o != NULL);                      \
-            assert(!IS_NODE_SLOW(state, o));        \
-            Py_IncRef((PyObject*)o);                \
+    #define INCREF(state, o)                                                  \
+        do {                                                                  \
+            assert(o != NULL);                                                \
+            assert(!IS_NODE_SLOW(state, o));                                  \
+            Py_IncRef((PyObject*)o);                                          \
         } while(0)
 
-    #define DECREF(state, o)                        \
-        do {                                        \
-            assert(o != NULL);                      \
-            assert(!IS_NODE_SLOW(state, o));        \
-            Py_DecRef((PyObject*)o);                \
+    #define DECREF(state, o)                                                  \
+        do {                                                                  \
+            assert(o != NULL);                                                \
+            assert(!IS_NODE_SLOW(state, o));                                  \
+            Py_DecRef((PyObject*)o);                                          \
         } while(0)
 
-    #define XINCREF(state, o)                       \
-        if (o != NULL) {                            \
-            assert(!IS_NODE_SLOW(state, o));        \
-            Py_IncRef((PyObject*)o);                \
+    #define XINCREF(state, o)                                                 \
+        if (o != NULL) {                                                      \
+            assert(!IS_NODE_SLOW(state, o));                                  \
+            Py_IncRef((PyObject*)o);                                          \
         } while(0)
 
-    #define XDECREF(state, o)                       \
-        if (o != NULL) {                            \
-            assert(!IS_NODE_SLOW(state, o));        \
-            Py_DecRef((PyObject*)o);                \
+    #define XDECREF(state, o)                                                 \
+        if (o != NULL) {                                                      \
+            assert(!IS_NODE_SLOW(state, o));                                  \
+            Py_DecRef((PyObject*)o);                                          \
         } while(0)
 
-    #define CLEAR(state, o)                         \
-        if (o != NULL) {                            \
-            assert(!IS_NODE_SLOW(state, o));        \
-            Py_DecRef((PyObject*)o);                \
-            o = NULL;                               \
+    #define CLEAR(state, o)                                                   \
+        if (o != NULL) {                                                      \
+            assert(!IS_NODE_SLOW(state, o));                                  \
+            Py_DecRef((PyObject*)o);                                          \
+            o = NULL;                                                         \
         } while(0)
 
-    #define SETREF(state, dst, src)                                 \
-        do {                                                        \
-            assert(dst != NULL && !IS_NODE_SLOW(state, dst));       \
-            Py_DecRef((PyObject*)dst);                              \
-            assert(src == NULL || !IS_NODE_SLOW(state, src));       \
-            dst = src;                                              \
+    #define SETREF(state, dst, src)                                           \
+        do {                                                                  \
+            assert(dst != NULL && !IS_NODE_SLOW(state, dst));                 \
+            Py_DecRef((PyObject*)dst);                                        \
+            assert(src == NULL || !IS_NODE_SLOW(state, src));                 \
+            dst = src;                                                        \
         } while(0)
 
-    #define XSETREF(state, dst, src)                                \
-        do {                                                        \
-            assert(dst == NULL || !IS_NODE_SLOW(state, dst));       \
-            Py_DecRef((PyObject*)dst);                              \
-            assert(src == NULL || !IS_NODE_SLOW(state, src));       \
-            dst = src;                                              \
+    #define XSETREF(state, dst, src)                                          \
+        do {                                                                  \
+            assert(dst == NULL || !IS_NODE_SLOW(state, dst));                 \
+            Py_DecRef((PyObject*)dst);                                        \
+            assert(src == NULL || !IS_NODE_SLOW(state, src));                 \
+            dst = src;                                                        \
         } while(0)
 
     #undef Py_INCREF
@@ -1673,13 +1662,13 @@ static int
 map_node_bitmap_traverse(MapNode_Bitmap *self, visitproc visit, void *arg)
 {
     /* Bitmap's tp_traverse */
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
 
-    Py_VISIT(Py_TYPE(self));
+    MAYBE_VISIT(state, Py_TYPE(self));
 
     Py_ssize_t i;
-
     for (i = Py_SIZE(self); --i >= 0; ) {
-        Py_VISIT(self->b_array[i]);
+        MAYBE_VISIT(state, self->b_array[i]);
     }
 
     return 0;
@@ -2142,12 +2131,12 @@ map_node_collision_traverse(MapNode_Collision *self,
 {
     /* Collision's tp_traverse */
 
-    Py_VISIT(Py_TYPE(self));
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
+    MAYBE_VISIT(state, Py_TYPE(self));
 
     Py_ssize_t i;
-
     for (i = Py_SIZE(self); --i >= 0; ) {
-        Py_VISIT(self->c_array[i]);
+        MAYBE_VISIT(state, self->c_array[i]);
     }
 
     return 0;
@@ -2576,13 +2565,12 @@ map_node_array_traverse(MapNode_Array *self,
                         visitproc visit, void *arg)
 {
     /* Array's tp_traverse */
-
-    Py_VISIT(Py_TYPE(self));
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
+    MAYBE_VISIT(state, Py_TYPE(self));
 
     Py_ssize_t i;
-
     for (i = 0; i < HAMT_ARRAY_NODE_SIZE; i++) {
-        Py_VISIT(self->a_array[i]);
+        MAYBE_VISIT(state, self->a_array[i]);
     }
 
     return 0;
@@ -3211,8 +3199,9 @@ map_baseiter_tp_dealloc(MapIterator *it)
 static int
 map_baseiter_tp_traverse(MapIterator *it, visitproc visit, void *arg)
 {
-    Py_VISIT(Py_TYPE(it));
-    Py_VISIT(it->mi_obj);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)it);
+    MAYBE_VISIT(state, Py_TYPE(it));
+    MAYBE_VISIT(state, it->mi_obj);
     return 0;
 }
 
@@ -3265,8 +3254,9 @@ map_baseview_tp_dealloc(MapView *view)
 static int
 map_baseview_tp_traverse(MapView *view, visitproc visit, void *arg)
 {
-    Py_VISIT(Py_TYPE(view));
-    Py_VISIT(view->mv_obj);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)view);
+    MAYBE_VISIT(state, Py_TYPE(view));
+    MAYBE_VISIT(state, view->mv_obj);
     return 0;
 }
 
@@ -3615,7 +3605,7 @@ static int
 map_tp_traverse(BaseMapObject *self, visitproc visit, void *arg)
 {
     module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
-    Py_VISIT(Py_TYPE(self));
+    MAYBE_VISIT(state, Py_TYPE(self));
     MAYBE_VISIT(state, self->b_root);
     return 0;
 }
