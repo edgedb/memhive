@@ -17,18 +17,22 @@
         || _Py_IsImmortal(o)                                                   \
     ))
 
+
+// We want to be able to track if an object was created in our interpreter
+// or in another one. One way to do it is to memorize all object IDs (their
+// addresses) that ever pass through our API boundary or are created by us.
+// We only need to keep track of addresses for this reason. Every
+// subinterpreter has its separate memory allocator, so addresses can't be
+// reused between them.
 #define TRACK(state, o)                                                        \
     do {                                                                       \
         assert(o != NULL);                                                     \
         if (IS_TRACKING(state) && IS_TRACKABLE(state, o)) {                    \
             assert(o != NULL);                                                 \
-            PyObject *id = PyLong_FromVoidPtr(o);                              \
-            if (id == NULL) abort();                                           \
-            if (PySet_Contains(state->debug_objects_ids, id) == 0) {           \
-                if (PyList_Append(state->debug_objects, o)) abort();           \
-                if (PySet_Add(state->debug_objects_ids, id)) abort();          \
-            }                                                                  \
-            Py_DecRef(id);                                                     \
+            PyObject *_id = PyLong_FromVoidPtr(o);                             \
+            if (_id == NULL) abort();                                          \
+            if (PySet_Add(state->debug_objects_ids, _id)) abort();             \
+            Py_DecRef(_id);                                                    \
         }                                                                      \
     } while (0);
 #else

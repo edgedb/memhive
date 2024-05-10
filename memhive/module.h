@@ -41,7 +41,6 @@ typedef struct {
 
 #ifdef DEBUG
     int debug_tracking;
-    PyObject *debug_objects;
     PyObject *debug_objects_ids;
 #endif
 } module_state;

@@ -100,7 +100,6 @@ module_clear(PyObject *mod)
     Py_CLEAR(state->sub);
 
     #ifdef DEBUG
-    Py_CLEAR(state->debug_objects);
     Py_CLEAR(state->debug_objects_ids);
     #endif
 
@@ -141,7 +140,6 @@ module_traverse(PyObject *mod, visitproc visit, void *arg)
     Py_VISIT(state->sub);
 
     #ifdef DEBUG
-    Py_VISIT(state->debug_objects);
     Py_VISIT(state->debug_objects_ids);
     #endif
 
@@ -155,10 +153,6 @@ enable_object_tracking(PyObject *m)
 {
     module_state *state = MemHive_GetModuleState(m);
     state->debug_tracking = 1;
-    Py_CLEAR(state->debug_objects);
-    state->debug_objects = PyList_New(0);
-    assert(state->debug_objects != NULL);
-    if (PySet_Clear(state->debug_objects_ids)) abort();
     Py_RETURN_NONE;
 }
 
@@ -167,9 +161,6 @@ disable_object_tracking(PyObject *m)
 {
     module_state *state = MemHive_GetModuleState(m);
     state->debug_tracking = 0;
-    Py_CLEAR(state->debug_objects);
-    state->debug_objects = PyList_New(0);
-    assert(state->debug_objects != NULL);
     if (PySet_Clear(state->debug_objects_ids)) abort();
     Py_RETURN_NONE;
 }
@@ -196,8 +187,6 @@ module_exec(PyObject *m)
 
     #ifdef DEBUG
     state->debug_tracking = 0;
-    state->debug_objects = PyList_New(0);
-    assert(state->debug_objects != NULL);
     state->debug_objects_ids = PySet_New(NULL);
     assert(state->debug_objects_ids != NULL);
     #endif
