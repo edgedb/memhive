@@ -9,18 +9,19 @@
 #include "module.h"
 
 typedef struct {
-    uint64_t length;
     pthread_mutex_t mut;
     pthread_cond_t cond;
-
-    struct item *first;
-    struct item *last;
-
+    struct queue *queues;
+    ssize_t nqueues;
     uint8_t closed;
+    uint8_t destroyed;
 } MemQueue;
 
+ssize_t
+MemQueue_AddChannel(MemQueue *queue);
+
 PyObject *
-MemQueue_Put(MemQueue *queue, PyObject *sender, PyObject *val);
+MemQueue_Push(MemQueue *queue, PyObject *sender, PyObject *val);
 
 int
 MemQueue_Get(MemQueue *queue, module_state *state, PyObject **sender, PyObject **val);

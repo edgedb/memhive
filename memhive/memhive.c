@@ -209,15 +209,14 @@ MemHive_Get(module_state *calling_state, MemHive *hive, PyObject *key)
 }
 
 static PyObject *
-memhive_py_put(MemHive *o, PyObject *val)
+memhive_py_push(MemHive *o, PyObject *val)
 {
     #ifdef DEBUG
     module_state *state = MemHive_GetModuleStateByObj((PyObject *)o);
     #endif
 
-    Py_INCREF(val);
     TRACK(state, val);
-    return MemQueue_Put(&o->in, (PyObject*)o, val);
+    return MemQueue_Push(&o->in, (PyObject*)o, val);
 }
 
 static PyObject *
@@ -274,7 +273,7 @@ memhive_py_do_refs(MemHive *o, PyObject *args)
 
 
 static PyMethodDef MemHive_methods[] = {
-    {"put", (PyCFunction)memhive_py_put, METH_O, NULL},
+    {"push", (PyCFunction)memhive_py_push, METH_O, NULL},
     {"get", (PyCFunction)memhive_py_get, METH_NOARGS, NULL},
     {"close_subs_intake", (PyCFunction)memhive_py_close_subs_intake, METH_NOARGS, NULL},
     {"do_refs", (PyCFunction)memhive_py_do_refs, METH_NOARGS, NULL},

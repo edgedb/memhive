@@ -20,14 +20,20 @@ from ._memhive import _MemHive
 from ._memhive import Map
 from ._memhive import ClosedQueueError
 
+import memhive._memhive as chive
+
 
 class Executor:
     def __init__(self, *, nworkers: int=8):
         self._mem = _MemHive()
         self._nworkers = nworkers
         self._workers = []
+        self.is_debug = hasattr(chive, 'enable_object_tracking')
         for _ in range(self._nworkers):
             self._make_sub()
+        # if self.is_debug:
+        #     chive.enable_object_tracking()
+
 
     def _make_sub(self):
         def runner():
@@ -44,13 +50,23 @@ class Executor:
 
             is_debug = hasattr(chive, 'enable_object_tracking')
 
+            STOP = 0
+            def dd():
+                while not STOP:
+                    mem.do_refs()
+                    time.sleep(0.01)
+            tt = threading.Thread(target=dd)
+            tt.start()
+
+            if is_debug:
+                chive.enable_object_tracking()
+
             try:
                 while True:
-                    if is_debug:
-                        chive.enable_object_tracking()
                     mem.do_refs()
 
                     p = mem.get()
+                    mem.do_refs()
 
                     idx, func_name, func_code, args = p
 
@@ -58,14 +74,16 @@ class Executor:
                     func = types.FunctionType(func_code, globals(), func_name)
 
                     ret = (idx, func(*args))
-                    mem.put(ret)
+                    mem.push(ret)
 
-                    if is_debug:
-                        chive.disable_object_tracking()
+                    # if is_debug:
+                    #     chive.disable_object_tracking()
 
             except chive.ClosedQueueError:
                 pass
             finally:
+                STOP = 1
+                tt.join()
                 mem.do_refs()
             \n''')
 
@@ -82,10 +100,17 @@ class Executor:
         thread.start()
         self._workers.append(thread)
 
-    def map(self, argss, func):
-        payloads = []
-
+    def put(self, argss, func):
         self._mem.do_refs()
+
+        self.STOP = 0
+        def dd():
+            while not self.STOP:
+                self._mem.do_refs()
+                time.sleep(0.01)
+        self.tt = threading.Thread(target=dd)
+        self.tt.start()
+
 
         res = {}
         for i, args in enumerate(argss):
@@ -96,11 +121,16 @@ class Executor:
                 args
             )
             res[i] = None
-            self._mem.put(p)
-            payloads.append(p)
+            print(f">>>>>>>>>>>>>> tuple args 0x{id(p):x}")
+            self._mem.push(p)
+            self._mem.do_refs()
+            del p
 
+        return res
+
+    def get(self, res):
         try:
-            for _ in range(len(argss)):
+            for _ in range(len(res)):
                 ret = self._mem.get()
                 res[ret[0]] = ret[1]
 
@@ -113,6 +143,8 @@ class Executor:
                 raise
 
         finally:
+            self.STOP = 1
+            self.tt.join()
             self._mem.do_refs()
 
     def close(self):

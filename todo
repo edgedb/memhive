@@ -1,8 +1,9 @@
-- Prohibit assigning non-safe types as keys or values
-- __repr__ should operate on copied objects
-- mutations API
-- for proper finalization we might want to track all objects
-  we ever processed by making a list of weaklinks to them. Once
-  all subinterpreters are dead we can iterate through the list
-  cleaning all of the objects that still have dangling reeferences
-  (can be due to objects having cycles? need to test this.)
+- [ ] Prohibit assigning non-safe types as keys or values
+- [x] __repr__ should operate on copied objects
+- [x] mutations API
+- [ ] for proper finalization we might want to track all objects
+      we ever processed by making a list of weaklinks to them. Once
+      all subinterpreters are dead we can iterate through the list
+      cleaning all of the objects that still have dangling reeferences
+      (can be due to objects having cycles? need to test this.)
+- [ ] add error checks on all mutex operations
