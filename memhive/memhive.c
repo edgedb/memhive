@@ -17,8 +17,13 @@ memhive_tp_init(MemHive *o, PyObject *args, PyObject *kwds)
     }
 
     module_state *state = MemHive_GetModuleStateByPythonType(Py_TYPE(o));
-    o->in = NewMemQueue(state);
-    o->out = NewMemQueue(state);
+
+    if (MemQueue_Init(&o->in)) {
+        Py_FatalError("Failed to initialize the intake queue");
+    }
+    if (MemQueue_Init(&o->out)) {
+        Py_FatalError("Failed to initialize the output queue");
+    }
 
     o->subs_list = NULL;
     if (pthread_mutex_init(&o->subs_list_mut, NULL)) {
@@ -210,21 +215,19 @@ memhive_py_put(MemHive *o, PyObject *val)
     module_state *state = MemHive_GetModuleStateByObj((PyObject *)o);
     #endif
 
-    MemQueue *q = o->in;
     Py_INCREF(val);
     TRACK(state, val);
-    return MemQueue_Put(q, (PyObject*)o, val);
+    return MemQueue_Put(&o->in, (PyObject*)o, val);
 }
 
 static PyObject *
 memhive_py_get(MemHive *o, PyObject *args)
 {
     module_state *state = MemHive_GetModuleStateByObj((PyObject*)o);
-    MemQueue *q = o->out;
 
     PyObject *sender;
     PyObject *remote_val;
-    if (MemQueue_Get(q, state, &sender, &remote_val)) {
+    if (MemQueue_Get(&o->out, state, &sender, &remote_val)) {
         return NULL;
     }
 
@@ -243,7 +246,7 @@ memhive_py_get(MemHive *o, PyObject *args)
 static PyObject *
 memhive_py_close_subs_intake(MemHive *o, PyObject *args)
 {
-    int ret = MemQueue_Close(o->in);
+    int ret = MemQueue_Close(&o->in);
     assert(ret == 0);
     Py_RETURN_NONE;
 }

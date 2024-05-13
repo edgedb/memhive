@@ -18,7 +18,6 @@ import _xxsubinterpreters as subint
 
 from ._memhive import _MemHive
 from ._memhive import Map
-from ._memhive import _MemQueue
 from ._memhive import ClosedQueueError
 
 

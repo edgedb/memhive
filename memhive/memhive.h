@@ -68,8 +68,8 @@ typedef struct {
     //   by using custom hash functions for all types we support.)
     PyObject *index;
 
-    MemQueue *in;
-    MemQueue *out;
+    MemQueue in;
+    MemQueue out;
 
     SubsList *subs_list;
     pthread_mutex_t subs_list_mut;

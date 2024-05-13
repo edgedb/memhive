@@ -78,8 +78,6 @@ module_clear(PyObject *mod)
     Py_CLEAR(state->MemHive_Type);
     Py_CLEAR(state->MemHiveSub_Type);
 
-    Py_CLEAR(state->MemQueue_Type);
-
     Py_CLEAR(state->MapType);
     Py_CLEAR(state->MapMutationType);
 
@@ -119,8 +117,6 @@ module_traverse(PyObject *mod, visitproc visit, void *arg)
 
     Py_VISIT(state->MemHive_Type);
     Py_VISIT(state->MemHiveSub_Type);
-
-    Py_VISIT(state->MemQueue_Type);
 
     Py_VISIT(state->MapType);
     Py_VISIT(state->MapMutationType);
@@ -218,8 +214,6 @@ module_exec(PyObject *m)
 
     CREATE_TYPE(m, state->MemHive_Type, &MemHive_TypeSpec, NULL, 1);
     CREATE_TYPE(m, state->MemHiveSub_Type, &MemHiveSub_TypeSpec, NULL, 1);
-
-    CREATE_TYPE(m, state->MemQueue_Type, &MemQueue_TypeSpec, NULL, 1);
 
     CREATE_TYPE(m, state->MapType, &Map_TypeSpec, NULL, 1);
     CREATE_TYPE(m, state->MapMutationType, &MapMutation_TypeSpec, NULL, 0);

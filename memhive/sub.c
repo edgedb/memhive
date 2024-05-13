@@ -60,7 +60,7 @@ memhive_sub_tp_subscript(MemHiveSub *o, PyObject *key)
 static PyObject *
 memhive_sub_py_put(MemHiveSub *o, PyObject *val)
 {
-    MemQueue *q = ((MemHive *)o->hive)->out;
+    MemQueue *q = &((MemHive *)o->hive)->out;
     #ifdef DEBUG
     module_state *state = MemHive_GetModuleStateByObj((PyObject*)o);
     #endif
@@ -73,7 +73,7 @@ static PyObject *
 memhive_sub_py_get(MemHiveSub *o, PyObject *args)
 {
     module_state *state = MemHive_GetModuleStateByObj((PyObject*)o);
-    MemQueue *q = ((MemHive *)o->hive)->in;
+    MemQueue *q = &((MemHive *)o->hive)->in;
 
     PyObject *sender;
     PyObject *remote_val;

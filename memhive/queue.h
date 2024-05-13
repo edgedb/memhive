@@ -9,8 +9,6 @@
 #include "module.h"
 
 typedef struct {
-    PyObject_HEAD
-
     uint64_t length;
     pthread_mutex_t mut;
     pthread_cond_t cond;
@@ -21,18 +19,20 @@ typedef struct {
     uint8_t closed;
 } MemQueue;
 
-extern PyType_Spec MemQueue_TypeSpec;
-
 PyObject *
 MemQueue_Put(MemQueue *queue, PyObject *sender, PyObject *val);
 
 int
 MemQueue_Get(MemQueue *queue, module_state *state, PyObject **sender, PyObject **val);
 
-MemQueue *
-NewMemQueue(module_state *calling_state);
+int
+MemQueue_Init(MemQueue *queue);
 
 int
 MemQueue_Close(MemQueue *queue);
+
+int
+MemQueue_Destroy(MemQueue *queue);
+
 
 #endif

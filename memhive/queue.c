@@ -10,8 +10,8 @@ struct item {
     struct item *next;
 };
 
-static int
-memqueue_tp_init(MemQueue *o, PyObject *args, PyObject *kwds)
+int
+MemQueue_Init(MemQueue *o)
 {
     if (pthread_mutex_init(&o->mut, NULL)) {
         Py_FatalError("Failed to initialize a mutex");
@@ -80,6 +80,14 @@ MemQueue_Put(MemQueue *queue, PyObject *sender, PyObject *val)
 int
 MemQueue_Get(MemQueue *queue, module_state *state, PyObject **sender, PyObject **val)
 {
+    // OK to read `queue->closed` without the lock as only
+    // the owner thread can set it.
+    if (queue->closed == 1) {
+        PyErr_SetString(PyExc_ValueError,
+                        "can't get, the queue is closed");
+        return -1;
+    }
+
     if (pthread_mutex_trylock(&queue->mut)) {
         Py_BEGIN_ALLOW_THREADS
         pthread_mutex_lock(&queue->mut);
@@ -91,10 +99,13 @@ MemQueue_Get(MemQueue *queue, module_state *state, PyObject **sender, PyObject *
         pthread_cond_wait(&queue->cond, &queue->mut);
         Py_END_ALLOW_THREADS
         if (PyErr_CheckSignals()) {
-            queue->closed = 1;
-            pthread_cond_broadcast(&queue->cond);
             pthread_mutex_unlock(&queue->mut);
-            return -1;
+            if (queue->closed == 1) {
+                PyErr_SetString(state->ClosedQueueError,
+                                "can't get, the queue is closed");
+                return -1;
+            }
+            continue;
         }
     }
 
@@ -131,39 +142,31 @@ MemQueue_Close(MemQueue *queue)
     if (queue->closed == 1) {
         return 0;
     }
-    queue->closed = 1;
     Py_BEGIN_ALLOW_THREADS
     pthread_mutex_lock(&queue->mut);
     Py_END_ALLOW_THREADS
+    queue->closed = 1;
     pthread_cond_broadcast(&queue->cond);
     pthread_mutex_unlock(&queue->mut);
 
     return 0;
 }
 
-MemQueue *
-NewMemQueue(module_state *calling_state)
+int
+MemQueue_Destroy(MemQueue *queue)
 {
-    MemQueue *o;
-    o = PyObject_GC_New(MemQueue, calling_state->MemQueue_Type);
-    if (o == NULL) {
-        return NULL;
+    assert(queue->closed);
+    if (pthread_mutex_trylock(&queue->mut)) {
+        Py_FatalError("lock is held by something in MemQueue_Destroy");
     }
-    if (memqueue_tp_init(o, NULL, NULL)) {
-        return NULL;
+    pthread_mutex_unlock(&queue->mut);
+    if (pthread_cond_destroy(&queue->cond)) {
+        Py_FatalError(
+            "clould not destroy the conditional var in MemQueue_Destroy");
     }
-    return o;
+    if (pthread_mutex_destroy(&queue->mut)) {
+        Py_FatalError("clould not destroy the lock in MemQueue_Destroy");
+    }
+
+    return 0;
 }
-
-PyType_Slot MemQueue_TypeSlots[] = {
-    {Py_tp_init, (initproc)memqueue_tp_init},
-    {0, NULL},
-};
-
-PyType_Spec MemQueue_TypeSpec = {
-    .name = "memhive._MemQueue",
-    .basicsize = sizeof(MemQueue),
-    .itemsize = 0,
-    .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
-    .slots = MemQueue_TypeSlots,
-};
