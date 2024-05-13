@@ -15,7 +15,12 @@ memhive_sub_tp_init(MemHiveSub *o, PyObject *args, PyObject *kwds)
     }
 
     o->hive = (DistantPyObject*)hive_ptr;
-    MemHive_RegisterSub((MemHive*)o->hive, o);
+
+    ssize_t channel = MemHive_RegisterSub((MemHive*)o->hive, o);
+    if (channel < 0) {
+        return -1;
+    }
+    o->channel = channel;
 
     o->main_refs = MemHive_RefQueue_New();
     if (o->main_refs == NULL) {
@@ -60,7 +65,7 @@ memhive_sub_tp_subscript(MemHiveSub *o, PyObject *key)
 static PyObject *
 memhive_sub_py_push(MemHiveSub *o, PyObject *val)
 {
-    MemQueue *q = &((MemHive *)o->hive)->out;
+    MemQueue *q = &((MemHive *)o->hive)->for_main;
     #ifdef DEBUG
     module_state *state = MemHive_GetModuleStateByObj((PyObject*)o);
     #endif
@@ -72,12 +77,12 @@ static PyObject *
 memhive_sub_py_get(MemHiveSub *o, PyObject *args)
 {
     module_state *state = MemHive_GetModuleStateByObj((PyObject*)o);
-    MemQueue *q = &((MemHive *)o->hive)->in;
+    MemQueue *q = &((MemHive *)o->hive)->for_subs;
 
     PyObject *sender;
     PyObject *remote_val;
 
-    if (MemQueue_Get(q, state, &sender, &remote_val)) {
+    if (MemQueue_Listen(q, state, o->channel, &sender, &remote_val)) {
         return NULL;
     }
 

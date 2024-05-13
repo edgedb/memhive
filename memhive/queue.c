@@ -8,6 +8,7 @@ struct item {
     PyObject *val;
     PyObject *sender;
     struct item *next;
+    memqueue_event_t kind;
 };
 
 struct queue {
@@ -46,7 +47,8 @@ queue_lock(MemQueue *queue)
 }
 
 static int
-queue_put(MemQueue *queue, struct queue *q, PyObject *sender, PyObject *val)
+queue_put(MemQueue *queue, struct queue *q,
+          PyObject *sender, memqueue_event_t kind, PyObject *val)
 {
     // The lock must be held for this operation
 
@@ -59,6 +61,7 @@ queue_put(MemQueue *queue, struct queue *q, PyObject *sender, PyObject *val)
 
     Py_INCREF(val);
     i->val = val;
+    i->kind = kind;
 
     i->sender = sender;     // borrow; we don't care, the lifetime of sender is
                             // greater than of this queue
@@ -111,6 +114,8 @@ MemQueue_Init(MemQueue *o)
 ssize_t
 MemQueue_AddChannel(MemQueue *queue)
 {
+    ssize_t channel;
+
     if (queue_lock(queue)) {
         return -1;
     }
@@ -124,18 +129,19 @@ MemQueue_AddChannel(MemQueue *queue)
     }
 
     memcpy(nq, queue->queues, (size_t)queue->nqueues * (sizeof (struct queue)));
-    nq[queue->nqueues].first = NULL;
-    nq[queue->nqueues].last = NULL;
-    nq[queue->nqueues].length = 0;
+
+    channel = queue->nqueues;
+    nq[channel].first = NULL;
+    nq[channel].last = NULL;
+    nq[channel].length = 0;
+
     queue->nqueues++;
 
     PyMem_RawFree(queue->queues);
     queue->queues = nq;
 
     queue_unlock(queue);
-    return -1;
-
-    return queue->nqueues - 1;
+    return channel;
 
 err:
     queue_unlock(queue);
@@ -150,7 +156,7 @@ MemQueue_Broadcast(MemQueue *queue, PyObject *sender, PyObject *msg)
     }
 
     for (ssize_t i = 1; i < queue->nqueues; i++) {
-        if (queue_put(queue, &queue->queues[i], sender, msg)) {
+        if (queue_put(queue, &queue->queues[i], sender, E_BROADCAST, msg)) {
             queue_unlock(queue);
             return -1;
         }
@@ -160,6 +166,22 @@ MemQueue_Broadcast(MemQueue *queue, PyObject *sender, PyObject *msg)
     return 0;
 }
 
+PyObject *
+MemQueue_Request(MemQueue *queue, ssize_t channel, PyObject *sender, PyObject *val)
+{
+    if (queue_lock(queue)) {
+        return NULL;
+    }
+
+    if (queue_put(queue, &queue->queues[channel], sender, E_REQUEST, val)) {
+        queue_unlock(queue);
+        return NULL;
+    }
+
+    queue_unlock(queue);
+
+    Py_RETURN_NONE;
+}
 
 PyObject *
 MemQueue_Push(MemQueue *queue, PyObject *sender, PyObject *val)
@@ -168,7 +190,7 @@ MemQueue_Push(MemQueue *queue, PyObject *sender, PyObject *val)
         return NULL;
     }
 
-    if (queue_put(queue, &queue->queues[0], sender, val)) {
+    if (queue_put(queue, &queue->queues[0], sender, E_PUSH, val)) {
         queue_unlock(queue);
         return NULL;
     }
@@ -179,15 +201,25 @@ MemQueue_Push(MemQueue *queue, PyObject *sender, PyObject *val)
 }
 
 int
-MemQueue_Get(MemQueue *queue, module_state *state, PyObject **sender, PyObject **val)
+MemQueue_Listen(MemQueue *queue, module_state *state,
+                ssize_t channel, PyObject **sender, PyObject **val)
 {
-    struct queue *q = &queue->queues[0];
-
     if (queue_lock(queue)) {
         return -1;
     }
 
-    while (q->first == NULL && queue->closed == 0) {
+    struct queue *q_push = &queue->queues[0];
+    struct queue *q_mine = NULL;
+    if (channel != 0) {
+        assert(channel >= 1 && channel < queue->nqueues);
+        q_mine = &queue->queues[channel];
+    }
+
+    while (
+        queue->closed == 0
+        && q_push->first == NULL
+        && (q_mine == NULL || q_mine->first == NULL)
+    ) {
         Py_BEGIN_ALLOW_THREADS
         pthread_cond_wait(&queue->cond, &queue->mut);
         Py_END_ALLOW_THREADS
@@ -208,6 +240,12 @@ MemQueue_Get(MemQueue *queue, module_state *state, PyObject **sender, PyObject *
                         "can't get, the queue is closed");
         return -1;
     }
+
+    struct queue *q = q_push;
+    if (q_mine != NULL && q_mine->first != NULL) {
+        q = q_mine;
+    }
+    assert(q->first != NULL);
 
     struct item *prev_first = q->first;
     *val = prev_first->val;

@@ -34,6 +34,7 @@ typedef struct {
     PyObject_HEAD
 
     DistantPyObject *hive;
+    ssize_t channel;
 
     RefQueue *main_refs;
     RefQueue *subs_refs;
@@ -68,8 +69,8 @@ typedef struct {
     //   by using custom hash functions for all types we support.)
     PyObject *index;
 
-    MemQueue in;
-    MemQueue out;
+    MemQueue for_subs;
+    MemQueue for_main;
 
     SubsList *subs_list;
     pthread_mutex_t subs_list_mut;
@@ -95,7 +96,8 @@ Py_ssize_t MemHive_Len(
 PyObject * MemHive_Get(
     module_state *calling_state, MemHive *hive, PyObject *key);
 
-int MemHive_RegisterSub(MemHive *hive, MemHiveSub *sub);
+ssize_t
+MemHive_RegisterSub(MemHive *hive, MemHiveSub *sub);
 
 
 #endif

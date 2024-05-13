@@ -17,14 +17,23 @@ typedef struct {
     uint8_t destroyed;
 } MemQueue;
 
+typedef enum {E_BROADCAST, E_REQUEST, E_PUSH} memqueue_event_t;
+
 ssize_t
 MemQueue_AddChannel(MemQueue *queue);
+
+int
+MemQueue_Broadcast(MemQueue *queue, PyObject *sender, PyObject *msg);
 
 PyObject *
 MemQueue_Push(MemQueue *queue, PyObject *sender, PyObject *val);
 
+PyObject *
+MemQueue_Request(MemQueue *queue, ssize_t channel, PyObject *sender, PyObject *val);
+
 int
-MemQueue_Get(MemQueue *queue, module_state *state, PyObject **sender, PyObject **val);
+MemQueue_Listen(MemQueue *queue, module_state *state,
+                ssize_t channel, PyObject **sender, PyObject **val);
 
 int
 MemQueue_Init(MemQueue *queue);
