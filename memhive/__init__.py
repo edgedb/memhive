@@ -16,16 +16,16 @@ import threading
 import marshal
 import _xxsubinterpreters as subint
 
-from ._memhive import _MemHive
-from ._memhive import Map
-from ._memhive import ClosedQueueError
+from .core import MemHive
+from .core import Map
+from .core import ClosedQueueError
 
-import memhive._memhive as chive
+import memhive.core as chive
 
 
 class Executor:
     def __init__(self, *, nworkers: int=8):
-        self._mem = _MemHive()
+        self._mem = MemHive()
         self._nworkers = nworkers
         self._workers = []
         self.is_debug = hasattr(chive, 'enable_object_tracking')
@@ -45,8 +45,8 @@ class Executor:
             import random
             sys.path = ''' + repr(sys.path) + '''
 
-            import memhive._memhive as chive
-            mem = chive._MemHiveSub(''' + repr(id(self._mem)) + ''')
+            import memhive.core as chive
+            mem = chive.MemHiveSub(''' + repr(id(self._mem)) + ''')
 
             is_debug = hasattr(chive, 'enable_object_tracking')
 

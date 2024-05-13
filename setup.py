@@ -60,20 +60,21 @@ if platform.python_implementation() == 'CPython':
 
     ext_modules = [
         setuptools.Extension(
-            "memhive._memhive",
+            "memhive.core._core",
             [
-                "memhive/queue.c",
-                "memhive/track.c",
-                "memhive/refqueue.c",
-                "memhive/module.c",
-                "memhive/memhive.c",
-                "memhive/sub.c",
-                "memhive/utils.c",
-                "memhive/map.c",
+                "memhive/core/queue.c",
+                "memhive/core/track.c",
+                "memhive/core/refqueue.c",
+                "memhive/core/module.c",
+                "memhive/core/memhive.c",
+                "memhive/core/sub.c",
+                "memhive/core/utils.c",
+                "memhive/core/map.c",
             ],
             extra_compile_args=CFLAGS,
             define_macros=define_macros,
-            undef_macros=undef_macros)
+            undef_macros=undef_macros
+        )
     ]
 else:
     ext_modules = []

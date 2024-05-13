@@ -131,7 +131,7 @@ PyType_Slot MemHiveSub_TypeSlots[] = {
 
 
 PyType_Spec MemHiveSub_TypeSpec = {
-    .name = "memhive._MemHiveSub",
+    .name = "memhive.core.MemHiveSub",
     .basicsize = sizeof(MemHiveSub),
     .itemsize = 0,
     .flags = Py_TPFLAGS_DEFAULT,

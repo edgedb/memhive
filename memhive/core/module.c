@@ -255,7 +255,7 @@ module_exec(PyObject *m)
 
 
 PyMODINIT_FUNC
-PyInit__memhive(void)
+PyInit__core(void)
 {
     return PyModuleDef_Init(&memhive_module);
 }

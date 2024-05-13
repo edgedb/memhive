@@ -297,7 +297,7 @@ PyType_Slot MemHive_TypeSlots[] = {
 
 
 PyType_Spec MemHive_TypeSpec = {
-    .name = "_memhive._MemHive",
+    .name = "memhive.core.MemHive",
     .basicsize = sizeof(MemHive),
     .itemsize = 0,
     .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
