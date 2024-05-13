@@ -7,3 +7,4 @@
       cleaning all of the objects that still have dangling reeferences
       (can be due to objects having cycles? need to test this.)
 - [ ] add error checks on all mutex operations
+- [ ] remote error serialization

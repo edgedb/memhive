@@ -202,7 +202,8 @@ MemQueue_Push(MemQueue *queue, PyObject *sender, PyObject *val)
 
 int
 MemQueue_Listen(MemQueue *queue, module_state *state,
-                ssize_t channel, PyObject **sender, PyObject **val)
+                ssize_t channel,
+                memqueue_event_t *event, PyObject **sender, PyObject **val)
 {
     if (queue_lock(queue)) {
         return -1;
@@ -248,6 +249,7 @@ MemQueue_Listen(MemQueue *queue, module_state *state,
     assert(q->first != NULL);
 
     struct item *prev_first = q->first;
+    *event = prev_first->kind;
     *val = prev_first->val;
     *sender = prev_first->sender;
 

@@ -33,7 +33,8 @@ MemQueue_Request(MemQueue *queue, ssize_t channel, PyObject *sender, PyObject *v
 
 int
 MemQueue_Listen(MemQueue *queue, module_state *state,
-                ssize_t channel, PyObject **sender, PyObject **val);
+                ssize_t channel,
+                memqueue_event_t *event, PyObject **sender, PyObject **val);
 
 int
 MemQueue_Init(MemQueue *queue);

@@ -3,6 +3,7 @@
 #include "memhive.h"
 #include "module.h"
 #include "track.h"
+#include "queue.h"
 
 
 static int
@@ -79,10 +80,11 @@ memhive_sub_py_get(MemHiveSub *o, PyObject *args)
     module_state *state = MemHive_GetModuleStateByObj((PyObject*)o);
     MemQueue *q = &((MemHive *)o->hive)->for_subs;
 
+    memqueue_event_t event;
     PyObject *sender;
     PyObject *remote_val;
 
-    if (MemQueue_Listen(q, state, o->channel, &sender, &remote_val)) {
+    if (MemQueue_Listen(q, state, o->channel, &event, &sender, &remote_val)) {
         return NULL;
     }
 

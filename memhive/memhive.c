@@ -205,6 +205,7 @@ MemHive_Get(module_state *calling_state, MemHive *hive, PyObject *key)
         return MemHive_CopyObject(calling_state, val);
     } else {
         PyErr_SetObject(PyExc_KeyError, key);
+        return NULL;
     }
 
     return val;
@@ -226,9 +227,10 @@ memhive_py_get(MemHive *o, PyObject *args)
 {
     module_state *state = MemHive_GetModuleStateByObj((PyObject*)o);
 
+    memqueue_event_t event;
     PyObject *sender;
     PyObject *remote_val;
-    if (MemQueue_Listen(&o->for_main, state, 0, &sender, &remote_val)) {
+    if (MemQueue_Listen(&o->for_main, state, 0, &event, &sender, &remote_val)) {
         return NULL;
     }
 
