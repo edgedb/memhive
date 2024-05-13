@@ -98,7 +98,8 @@ MemHive_RefQueue_Dec(RefQueue *queue, PyObject *obj)
     return push_incdec(queue, obj, 0);
 }
 
-int MemHive_RefQueue_Run(RefQueue *q, module_state *state)
+void
+MemHive_RefQueue_Run(RefQueue *q, module_state *state)
 {
     struct item* incs;
     struct item* decs;
@@ -169,8 +170,6 @@ int MemHive_RefQueue_Run(RefQueue *q, module_state *state)
         to_reuse = to_reuse->next;
         free(next);
     }
-
-    return 0;
 }
 
 int

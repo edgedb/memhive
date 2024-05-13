@@ -34,6 +34,12 @@ class Executor:
         # if self.is_debug:
         #     chive.enable_object_tracking()
 
+    def __getitem__(self, key):
+        return self._mem[key]
+    def __contains__(self, key):
+        return key in self._mem
+    def __setitem__(self, key, val):
+        self._mem[key] = val
 
     def _make_sub(self):
         def runner():
@@ -73,7 +79,7 @@ class Executor:
                     func_code = marshal.loads(func_code)
                     func = types.FunctionType(func_code, globals(), func_name)
 
-                    ret = (idx, func(*args))
+                    ret = (idx, func(mem, *args))
                     mem.push(ret)
 
                     # if is_debug:

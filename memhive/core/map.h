@@ -129,7 +129,13 @@ extern PyType_Spec ArrayNode_TypeSpec;
 extern PyType_Spec BitmapNode_TypeSpec;
 extern PyType_Spec CollisionNode_TypeSpec;
 
-PyObject * NewMapProxy(module_state *, PyObject *);
-PyObject * CopyMapProxy(module_state *, PyObject *);
+PyObject * MemHive_NewMap(module_state *);
+PyObject * MemHive_MapSetItem(module_state *state,
+                              PyObject *self, PyObject *key, PyObject *val);
+PyObject * MemHive_MapGetItem(module_state *state, PyObject *self,
+                              PyObject *key, PyObject *def);
+int MemHive_MapContains(module_state *state, PyObject *self, PyObject *key);
+PyObject * MemHive_NewMapProxy(module_state *, PyObject *);
+PyObject * MemHive_CopyMapProxy(module_state *, PyObject *);
 
 #endif

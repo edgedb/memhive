@@ -7,16 +7,16 @@
 static int
 memhive_tp_init(MemHive *o, PyObject *args, PyObject *kwds)
 {
-    o->index = PyDict_New();
-    if (o->index == NULL) {
-        goto err;
-    }
+    module_state *state = MemHive_GetModuleStateByPythonType(Py_TYPE(o));
 
     if (pthread_rwlock_init(&o->index_rwlock, NULL)) {
         Py_FatalError("Failed to initialize an RWLock");
     }
 
-    module_state *state = MemHive_GetModuleStateByPythonType(Py_TYPE(o));
+    o->index = MemHive_NewMap(state);
+    if (o->index == NULL) {
+        goto err;
+    }
 
     if (MemQueue_Init(&o->for_subs)) {
         Py_FatalError("Failed to initialize the subs intake queue");
@@ -53,10 +53,25 @@ MemHive_RegisterSub(MemHive *hive, MemHiveSub *sub) {
         cnt->next = hive->subs_list;
         hive->subs_list = cnt;
     }
-    pthread_mutex_unlock(&hive->subs_list_mut);
 
     ssize_t channel = MemQueue_AddChannel(&hive->for_subs);
+    pthread_mutex_unlock(&hive->subs_list_mut);
+
     return channel;
+}
+
+static void
+memhive_do_refs(MemHive *hive, module_state *state)
+{
+    pthread_mutex_lock(&hive->subs_list_mut);
+
+    SubsList *lst = hive->subs_list;
+    while (lst != NULL) {
+        MemHive_RefQueue_Run(lst->sub->main_refs, state);
+        lst = lst->next;
+    }
+
+    pthread_mutex_unlock(&hive->subs_list_mut);
 }
 
 
@@ -97,7 +112,7 @@ memhive_tp_len(MemHive *o)
         Py_FatalError("Failed to acquire the MemHive index read lock");
     }
 
-    Py_ssize_t size = PyDict_Size(o->index);
+    Py_ssize_t size = PyObject_Length(o->index);
 
     if (pthread_rwlock_unlock(&o->index_rwlock)) {
         Py_FatalError("Failed to release the MemHive index read lock");
@@ -110,72 +125,48 @@ memhive_tp_len(MemHive *o)
 static PyObject *
 memhive_tp_subscript(MemHive *o, PyObject *key)
 {
-    if (pthread_rwlock_rdlock(&o->index_rwlock)) {
-        Py_FatalError("Failed to acquire the MemHive index read lock");
-    }
-
-    PyObject *val = NULL;
-    if (PyDict_Contains(o->index, key)) {
-        // An error besides KeyError should never happen, as we're
-        // limiting the key type to a unicode object, which shouldn't ever
-        // fail in its __eq__ or __hash__ methods. But if it does...
-        // horrible things might happen, as we'd be remotely
-        // inducing another interpreter into an error state *at a distance*.
-        // Now this would be actually spooky.
-        // ToDo: we should stop using the dict type for the index.
-        val = PyDict_GetItemWithError(o->index, key);
-    }
-
-    if (pthread_rwlock_unlock(&o->index_rwlock)) {
-        Py_FatalError("Failed to release the MemHive index read lock");
-    }
-
-    if (val == NULL) {
-        if (PyErr_Occurred()) {
-            // See the above comment. If this happens we better know
-            // this *can* happen, so please, dear sir, abandon the ship.
-            Py_FatalError("Failed to lookup a key in the index");
-        }
-        else {
-            PyErr_SetObject(PyExc_KeyError, key);
-        }
-    }
-
-    Py_INCREF(val);
-    return val;
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)o);
+    return MemHive_Get(state, o, key);
 }
 
 
 static int
 memhive_tp_ass_sub(MemHive *o, PyObject *key, PyObject *val)
 {
-    if (!MEMHIVE_IS_VALID_KEY(key)) {
-        // we want to only allow primitive immutable objects as keys
-        PyErr_SetString(
-            PyExc_KeyError,
-            "only primitive immutable objects are allowed");
-        return -1;
-    }
-
-    if (!MEMHIVE_IS_PROXYABLE(val) && !MEMHIVE_IS_COPYABLE(val)) {
-        // we want to only allow proxyable objects as values
-        PyErr_SetString(
-            PyExc_ValueError,
-            "only proxyable/copyable objects are allowed");
-        return -1;
-    }
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)o);
 
     if (pthread_rwlock_wrlock(&o->index_rwlock)) {
         Py_FatalError("Failed to acquire the MemHive index write lock");
     }
 
-    int res = PyDict_SetItem(o->index, key, val);
+    // It's important to do the refs here! When a remote interpreter reads
+    // a value, say another Map, that Map has to keep existing in the main
+    // interpreter. All scheduled increfs while `index_rwlock` *read* lock
+    // was held must be applied before we apply changes while having
+    // the *write* lock.
+    memhive_do_refs(o, state);
+
+    PyObject *new_index = MemHive_MapSetItem(state, o->index, key, val);
+    if (new_index != NULL) {
+        Py_SETREF(o->index, new_index);
+    }
 
     if (pthread_rwlock_unlock(&o->index_rwlock)) {
         Py_FatalError("Failed to release the MemHive index write lock");
     }
 
-    return res;
+    if (new_index == NULL) {
+        return -1;
+    }
+
+    return 0;
+}
+
+static int
+memhive_tp_contains(MemHive *hive, PyObject *key)
+{
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)hive);
+    return MemHive_MapContains(state, hive->index, key);
 }
 
 
@@ -186,29 +177,36 @@ MemHive_Len(MemHive *hive)
 }
 
 PyObject *
-MemHive_Get(module_state *calling_state, MemHive *hive, PyObject *key)
+MemHive_Get(module_state *state, MemHive *hive, PyObject *key)
 {
     if (pthread_rwlock_rdlock(&hive->index_rwlock)) {
         Py_FatalError("Failed to acquire the MemHive index read lock");
     }
 
-    PyObject *val = NULL;
-    if (PyDict_Contains(hive->index, key)) {
-        val = PyDict_GetItemWithError(hive->index, key);
-    }
+    PyObject *val = MemHive_MapGetItem(state, hive->index, key, NULL);
 
     if (pthread_rwlock_unlock(&hive->index_rwlock)) {
         Py_FatalError("Failed to release the MemHive index read lock");
     }
 
-    if (val != NULL) {
-        return MemHive_CopyObject(calling_state, val);
-    } else {
-        PyErr_SetObject(PyExc_KeyError, key);
-        return NULL;
+    Py_XINCREF(val);
+    return val;
+}
+
+int
+MemHive_Contains(module_state *state, MemHive *hive, PyObject *key)
+{
+    if (pthread_rwlock_rdlock(&hive->index_rwlock)) {
+        Py_FatalError("Failed to acquire the MemHive index read lock");
     }
 
-    return val;
+    int ret = MemHive_MapContains(state, hive->index, key);
+
+    if (pthread_rwlock_unlock(&hive->index_rwlock)) {
+        Py_FatalError("Failed to release the MemHive index read lock");
+    }
+
+    return ret;
 }
 
 static PyObject *
@@ -258,20 +256,7 @@ static PyObject *
 memhive_py_do_refs(MemHive *o, PyObject *args)
 {
     module_state *state = MemHive_GetModuleStateByObj((PyObject *)o);
-
-    pthread_mutex_lock(&o->subs_list_mut);
-
-    SubsList *lst = o->subs_list;
-    while (lst != NULL) {
-        if (MemHive_RefQueue_Run(lst->sub->main_refs, state)) {
-            pthread_mutex_unlock(&o->subs_list_mut);
-            return NULL;
-        }
-        lst = lst->next;
-    }
-
-    pthread_mutex_unlock(&o->subs_list_mut);
-
+    memhive_do_refs(o, state);
     Py_RETURN_NONE;
 }
 
@@ -290,6 +275,7 @@ PyType_Slot MemHive_TypeSlots[] = {
     {Py_mp_length, (lenfunc)memhive_tp_len},
     {Py_mp_subscript, (binaryfunc)memhive_tp_subscript},
     {Py_mp_ass_subscript, (objobjargproc)memhive_tp_ass_sub},
+    {Py_sq_contains, (objobjproc)memhive_tp_contains},
     {Py_tp_init, (initproc)memhive_tp_init},
     {Py_tp_dealloc, (destructor)memhive_tp_dealloc},
     {0, NULL},

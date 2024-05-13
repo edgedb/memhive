@@ -62,6 +62,12 @@ memhive_sub_tp_subscript(MemHiveSub *o, PyObject *key)
     return MemHive_Get(state, (MemHive *)o->hive, key);
 }
 
+static int
+memhive_sub_tp_contains(MemHiveSub *o, PyObject *key)
+{
+    module_state *state = PyType_GetModuleState(Py_TYPE(o));
+    return MemHive_Contains(state, (MemHive *)o->hive, key);
+}
 
 static PyObject *
 memhive_sub_py_push(MemHiveSub *o, PyObject *val)
@@ -105,9 +111,7 @@ static PyObject *
 memhive_sub_py_do_refs(MemHiveSub *o, PyObject *args)
 {
     module_state *state = MemHive_GetModuleStateByObj((PyObject *)o);
-    if (MemHive_RefQueue_Run(o->subs_refs, state)) {
-        return NULL;
-    }
+    MemHive_RefQueue_Run(o->subs_refs, state);
     Py_RETURN_NONE;
 }
 
@@ -124,6 +128,7 @@ PyType_Slot MemHiveSub_TypeSlots[] = {
     {Py_tp_methods, MemHiveSub_methods},
     {Py_mp_length, (lenfunc)memhive_sub_tp_len},
     {Py_mp_subscript, (binaryfunc)memhive_sub_tp_subscript},
+    {Py_sq_contains, (objobjproc)memhive_sub_tp_contains},
     {Py_tp_init, (initproc)memhive_sub_tp_init},
     {Py_tp_dealloc, (destructor)memhive_sub_tp_dealloc},
     {0, NULL},

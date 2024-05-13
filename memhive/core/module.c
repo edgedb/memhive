@@ -246,8 +246,8 @@ module_exec(PyObject *m)
     // TODO: add an indirection function looking at type name and
     // dispatching accordingly. Will only need that when we add the
     // tuple-like type to compliment our mapping.
-    proxy_desc->copy_from_main_to_sub = NewMapProxy;
-    proxy_desc->copy_from_sub_to_main = CopyMapProxy;
+    proxy_desc->copy_from_main_to_sub = MemHive_NewMapProxy;
+    proxy_desc->copy_from_sub_to_main = MemHive_CopyMapProxy;
     state->proxy_desc_template = proxy_desc;
 
     return 0;

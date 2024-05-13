@@ -256,12 +256,17 @@ Further Reading
 */
 
 
-#define TYPENAME_ARRAY_NODE "_memhive.ArrayNode"
-#define TYPENAME_BITMAP_NODE "_memhive.BitmapNode"
-#define TYPENAME_COLLISION_NODE "_memhive.CollisionNode"
+#define TYPENAME_MAP "memhive.Map"
+#define TYPENAME_MAPMUT "memhive.MapMutation"
+
+#define TYPENAME_ARRAY_NODE "memhive.core.ArrayNode"
+#define TYPENAME_BITMAP_NODE "memhive.core.BitmapNode"
+#define TYPENAME_COLLISION_NODE "memhive.core.CollisionNode"
 
 // IS_XXX_NODE_SLOW methods can be called on any PyObject, no matter
 // if it belongs to our subinterpreter or another one.
+#define IS_MAP_SLOW(state, o)                                                 \
+    (o != NULL && strcmp(Py_TYPE(o)->tp_name, TYPENAME_MAP) == 0)
 #define IS_ARRAY_NODE_SLOW(state, o)                                          \
     (o != NULL && strcmp(Py_TYPE(o)->tp_name, TYPENAME_ARRAY_NODE) == 0)
 #define IS_BITMAP_NODE_SLOW(state, o)                                         \
@@ -3644,7 +3649,7 @@ map_tp_init(MapObject *self, PyObject *args, PyObject *kwds)
     PyObject *arg = NULL;
     uint64_t mutid = 0;
 
-    if (!PyArg_UnpackTuple(args, "memhive.Map", 0, 1, &arg)) {
+    if (!PyArg_UnpackTuple(args, TYPENAME_MAP, 0, 1, &arg)) {
         return -1;
     }
 
@@ -3827,17 +3832,8 @@ map_py_set(MapObject *self, PyObject *args)
 }
 
 static PyObject *
-map_py_get(BaseMapObject *self, PyObject *args)
+map_get(module_state *state, BaseMapObject *self, PyObject *key, PyObject *def)
 {
-    PyObject *key;
-    PyObject *def = NULL;
-
-    module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
-
-    if (!PyArg_UnpackTuple(args, "get", 1, 2, &key, &def)) {
-        return NULL;
-    }
-
     PyObject *val = NULL;
     map_find_t res = map_find(state, self, key, &val);
     switch (res) {
@@ -3857,6 +3853,21 @@ map_py_get(BaseMapObject *self, PyObject *args)
         default:
             abort();
     }
+}
+
+static PyObject *
+map_py_get(BaseMapObject *self, PyObject *args)
+{
+    PyObject *key;
+    PyObject *def = NULL;
+
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)self);
+
+    if (!PyArg_UnpackTuple(args, "get", 1, 2, &key, &def)) {
+        return NULL;
+    }
+
+    return map_get(state, self, key, def);
 }
 
 static PyObject *
@@ -4019,6 +4030,7 @@ map_py_repr(BaseMapObject *m)
             if (s == NULL) {
                 goto error;
             }
+            TRACK(state, s);
             if (_PyUnicodeWriter_WriteStr(&writer, s) < 0) {
                 DECREF(state, s);
                 goto error;
@@ -4224,7 +4236,7 @@ PyType_Slot Map_TypeSlots[] = {
 
 
 PyType_Spec Map_TypeSpec = {
-    .name = "memhive.Map",
+    .name = TYPENAME_MAP,
     .basicsize = sizeof(MapObject),
     .itemsize = 0,
     .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC
@@ -4933,7 +4945,7 @@ PyType_Slot MapMutation_TypeSlots[] = {
 
 
 PyType_Spec MapMutation_TypeSpec = {
-    .name = "memhive.MapMutation",
+    .name = TYPENAME_MAPMUT,
     .basicsize = sizeof(MapMutationObject),
     .itemsize = 0,
     .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC
@@ -5000,7 +5012,14 @@ PyType_Spec CollisionNode_TypeSpec = {
 
 
 PyObject *
-NewMapProxy(module_state *state, PyObject *map)
+MemHive_NewMap(module_state *state)
+{
+    return (PyObject *)map_new(state);
+}
+
+
+PyObject *
+MemHive_NewMapProxy(module_state *state, PyObject *map)
 {
     MapObject *o = map_alloc(state);
     if (o == NULL) {
@@ -5021,7 +5040,62 @@ NewMapProxy(module_state *state, PyObject *map)
     return (PyObject *)o;
 }
 
+
+PyObject *
+MemHive_MapGetItem(module_state *state, PyObject *self,
+                   PyObject *key, PyObject *def)
+{
+    if (!IS_MAP_SLOW(state, self)) {
+        PyErr_SetString(PyExc_TypeError, "not a map");
+        return NULL;
+    }
+    TRACK(state, key);
+    BaseMapObject *map = (BaseMapObject *)self;
+    return map_get(state, map, key, def);
+};
+
+
+PyObject *
+MemHive_MapSetItem(module_state *state, PyObject *self,
+                   PyObject *key, PyObject *val)
+{
+    if (!IS_MAP_SLOW(state, self)) {
+        PyErr_SetString(PyExc_TypeError, "not a map");
+        return NULL;
+    }
+    TRACK(state, key);
+    MapObject *map = (MapObject *)self;
+    return (PyObject *)map_assoc(state, map, key, val);
+}
+
+
+int
+MemHive_MapContains(module_state *state, PyObject *self, PyObject *key)
+{
+    if (!IS_MAP_SLOW(state, self)) {
+        PyErr_SetString(PyExc_TypeError, "not a map");
+        return -1;
+    }
+
+    TRACK(state, key);
+    PyObject *val;
+    map_find_t res = map_find(state, (BaseMapObject *)self, key, &val);
+    switch (res) {
+        case F_ERROR:
+            return -1;
+        case F_NOT_FOUND:
+            return 0;
+        case F_FOUND_EXT:
+        case F_FOUND:
+            return 1;
+        default:
+            abort();
+    }
+}
+
+
 ////////////////////////////////////////////////////////////////////////////////
+
 
 static PyObject *
 map_node_unproxy(module_state *state, MapNode *node);
@@ -5150,7 +5224,7 @@ map_node_unproxy(module_state *state, MapNode *node)
 
 
 PyObject *
-CopyMapProxy(module_state *state, PyObject *map)
+MemHive_CopyMapProxy(module_state *state, PyObject *map)
 {
     MapObject *o = map_alloc(state);
     if (o == NULL) {

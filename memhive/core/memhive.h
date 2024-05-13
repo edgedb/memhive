@@ -52,21 +52,6 @@ typedef struct {
 
     pthread_rwlock_t index_rwlock;
 
-    // We're going to use a Python dict for the index, which is
-    // somewhat suboptimal given that we will be calling read
-    // dict lookup APIs from other threads. This should be fine,
-    // considering:
-    //
-    // * we will have a custom RWLock surrounding _ALL_ operations
-    //   with the index.
-    //
-    // * we will make the possibility of Python needing to
-    //   raise errors near 0.
-    //
-    // * hashes of the same strings are equal across subinterpreters
-    //   (this is assumed everywhere, so if this assumption is broken
-    //   in some future version of Python we'll need to workaround
-    //   by using custom hash functions for all types we support.)
     PyObject *index;
 
     MemQueue for_subs;
@@ -91,10 +76,8 @@ _map_node_bitmap_new(module_state *state, Py_ssize_t size, uint64_t mutid);
 Py_ssize_t MemHive_Len(
     MemHive *hive);
 
-// Gets a value for the key, NULL on KeyError.
-// The value will be safe to use in the calling subinterpreter.
-PyObject * MemHive_Get(
-    module_state *calling_state, MemHive *hive, PyObject *key);
+PyObject * MemHive_Get(module_state *state, MemHive *hive, PyObject *key);
+int MemHive_Contains(module_state *state, MemHive *hive, PyObject *key);
 
 ssize_t
 MemHive_RegisterSub(MemHive *hive, MemHiveSub *sub);
