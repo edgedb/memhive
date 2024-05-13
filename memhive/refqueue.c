@@ -37,7 +37,11 @@ MemHive_RefQueue_New(void)
 static int
 push_incdec(RefQueue *q, PyObject *obj, int is_inc)
 {
-    pthread_mutex_lock(&q->mut);
+    if (pthread_mutex_trylock(&q->mut)) {
+        Py_BEGIN_ALLOW_THREADS
+        pthread_mutex_lock(&q->mut);
+        Py_END_ALLOW_THREADS
+    }
 
     if (q->closed) {
         pthread_mutex_unlock(&q->mut);
@@ -99,7 +103,11 @@ int MemHive_RefQueue_Run(RefQueue *q, module_state *state)
     struct item* incs;
     struct item* decs;
 
-    pthread_mutex_lock(&q->mut);
+   if (pthread_mutex_trylock(&q->mut)) {
+        Py_BEGIN_ALLOW_THREADS
+        pthread_mutex_lock(&q->mut);
+        Py_END_ALLOW_THREADS
+    }
 
     incs = q->first_inc;
     decs = q->first_dec;
@@ -138,7 +146,11 @@ int MemHive_RefQueue_Run(RefQueue *q, module_state *state)
     }
 
     if (to_reuse != NULL) {
-        pthread_mutex_lock(&q->mut);
+        if (pthread_mutex_trylock(&q->mut)) {
+            Py_BEGIN_ALLOW_THREADS
+            pthread_mutex_lock(&q->mut);
+            Py_END_ALLOW_THREADS
+        }
         while (to_reuse != NULL && q->reuse_num < MAX_REUSE) {
             struct item* next = to_reuse;
             to_reuse = to_reuse->next;

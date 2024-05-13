@@ -46,9 +46,11 @@ MemQueue_Put(MemQueue *queue, PyObject *sender, PyObject *val)
         return NULL;
     }
 
-    Py_BEGIN_ALLOW_THREADS
-    pthread_mutex_lock(&queue->mut);
-    Py_END_ALLOW_THREADS
+    if (pthread_mutex_trylock(&queue->mut)) {
+        Py_BEGIN_ALLOW_THREADS
+        pthread_mutex_lock(&queue->mut);
+        Py_END_ALLOW_THREADS
+    }
 
     i->val = val;           // it's the responsibility of the caller to manage
                             // the refcount for this
@@ -78,9 +80,11 @@ MemQueue_Put(MemQueue *queue, PyObject *sender, PyObject *val)
 int
 MemQueue_Get(MemQueue *queue, module_state *state, PyObject **sender, PyObject **val)
 {
-    Py_BEGIN_ALLOW_THREADS
-    pthread_mutex_lock(&queue->mut);
-    Py_END_ALLOW_THREADS
+    if (pthread_mutex_trylock(&queue->mut)) {
+        Py_BEGIN_ALLOW_THREADS
+        pthread_mutex_lock(&queue->mut);
+        Py_END_ALLOW_THREADS
+    }
 
     while (queue->first == NULL && queue->closed == 0) {
         Py_BEGIN_ALLOW_THREADS
