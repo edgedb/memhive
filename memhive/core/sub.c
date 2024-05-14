@@ -37,6 +37,8 @@ memhive_sub_tp_init(MemHiveSub *o, PyObject *args, PyObject *kwds)
     state->sub = (PyObject*)o;
     Py_INCREF(state->sub);
 
+    TRACK(state, o);
+
     return 0;
 }
 
@@ -77,11 +79,14 @@ memhive_sub_py_push(MemHiveSub *o, PyObject *val)
     module_state *state = MemHive_GetModuleStateByObj((PyObject*)o);
     #endif
     TRACK(state, val);
-    return MemQueue_Push(q, (PyObject*)o, val);
+    if (MemQueue_Push(q, 0, (PyObject*)o, val)) {
+        return NULL;
+    }
+    Py_RETURN_NONE;
 }
 
 static PyObject *
-memhive_sub_py_get(MemHiveSub *o, PyObject *args)
+memhive_sub_py_listen(MemHiveSub *o, PyObject *args)
 {
     module_state *state = MemHive_GetModuleStateByObj((PyObject*)o);
     MemQueue *q = &((MemHive *)o->hive)->for_subs;
@@ -94,16 +99,41 @@ memhive_sub_py_get(MemHiveSub *o, PyObject *args)
         return NULL;
     }
 
-    PyObject *ret = MemHive_CopyObject(state, remote_val);
-    if (ret == NULL) {
-        return NULL;
+    PyObject *ret = NULL;
+    PyObject *resp = NULL;
+
+    PyObject *payload = MemHive_CopyObject(state, remote_val);
+    if (payload == NULL) {
+        goto err;
     }
 
     if (MemHive_RefQueue_Dec(o->main_refs, remote_val)) {
-        return NULL;
+        goto err;
+    }
+
+    resp = MemQueueResponse_New(state, (PyObject *)o, D_FROM_SUB, 0, E_PUSH);
+    if (resp == NULL) {
+        goto err;
+    }
+
+    ret = PyTuple_New(2);
+    if (ret == NULL) {
+        goto err;
+    }
+    if (PyTuple_SetItem(ret, 0, payload)) {
+        goto err;
+    }
+    if (PyTuple_SetItem(ret, 1, resp)) {
+        goto err;
     }
 
     return ret;
+
+err:
+    Py_XDECREF(payload);
+    Py_XDECREF(resp);
+    Py_XDECREF(ret);
+    return NULL;
 }
 
 
@@ -118,7 +148,7 @@ memhive_sub_py_do_refs(MemHiveSub *o, PyObject *args)
 
 static PyMethodDef MemHiveSub_methods[] = {
     {"push", (PyCFunction)memhive_sub_py_push, METH_O, NULL},
-    {"get", (PyCFunction)memhive_sub_py_get, METH_NOARGS, NULL},
+    {"listen", (PyCFunction)memhive_sub_py_listen, METH_NOARGS, NULL},
     {"do_refs", (PyCFunction)memhive_sub_py_do_refs, METH_NOARGS, NULL},
     {NULL, NULL}
 };

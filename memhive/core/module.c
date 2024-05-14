@@ -230,6 +230,8 @@ module_exec(PyObject *m)
     CREATE_TYPE(m, state->MapValuesIterType, &MapValuesIter_TypeSpec, NULL, 0);
     CREATE_TYPE(m, state->MapItemsIterType, &MapItemsIter_TypeSpec, NULL, 0);
 
+    CREATE_TYPE(m, state->MemQueueResponseType, &MemQueueResponse_TypeSpec, NULL, 0);
+
     PyInterpreterState *interp = PyInterpreterState_Get();
     assert(interp != NULL);
     state->interpreter_id = PyInterpreterState_GetID(interp);

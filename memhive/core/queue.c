@@ -1,7 +1,10 @@
+#include "memhive.h"
 #include "queue.h"
 #include "utils.h"
+#include "track.h"
 
 #define MAX_REUSE 100
+#define QUEUE_RESPONSE_TYPENAME "memhive.core.QueueResponse"
 
 struct item {
     PyObject *val;
@@ -192,21 +195,20 @@ MemQueue_Request(MemQueue *queue, ssize_t channel, PyObject *sender, PyObject *v
     Py_RETURN_NONE;
 }
 
-PyObject *
-MemQueue_Push(MemQueue *queue, PyObject *sender, PyObject *val)
+int
+MemQueue_Push(MemQueue *queue, ssize_t channel, PyObject *sender, PyObject *val)
 {
     if (queue_lock(queue)) {
-        return NULL;
+        return -1;
     }
 
-    if (queue_put(queue, &queue->queues[0], sender, E_PUSH, val)) {
+    if (queue_put(queue, &queue->queues[channel], sender, E_PUSH, val)) {
         queue_unlock(queue);
-        return NULL;
+        return -1;
     }
 
     queue_unlock(queue);
-
-    Py_RETURN_NONE;
+    return 0;
 }
 
 int
@@ -305,6 +307,7 @@ MemQueue_Close(MemQueue *queue)
 void
 MemQueue_Destroy(MemQueue *queue)
 {
+    printf("=== QUEUE DESTROY === \n");
     assert(queue->closed);
     if (queue->destroyed) {
         return;
@@ -341,3 +344,120 @@ MemQueue_Destroy(MemQueue *queue)
     queue->queues = NULL;
     queue->nqueues = 0;
 }
+
+
+////////////////////////////////////////////////////////////////////////////////
+
+
+PyObject *
+MemQueueResponse_New(module_state *state,
+                     PyObject *owner, memqueue_direction_t dir,
+                     ssize_t channel,
+                     memqueue_event_t kind)
+{
+    MemQueueResponse *o = PyObject_GC_New(
+        MemQueueResponse, state->MemQueueResponseType);
+    if (o == NULL) {
+        return NULL;
+    }
+
+    #ifdef DEBUG
+    if (!IS_LOCALLY_TRACKED(state, owner)) {
+        Py_FatalError("QueueReponse expects a local owner object");
+    }
+    #endif
+
+    Py_INCREF(owner);
+    o->r_owner = owner;
+
+    o->r_dir = dir;
+    o->r_kind = kind;
+    o->r_used = 0;
+    o->r_channel = channel;
+
+    PyObject_GC_Track(o);
+    return (PyObject *)o;
+}
+
+static PyObject *
+mq_resp_tp_call(MemQueueResponse *o, PyObject *args, PyObject *kwargs)
+{
+    module_state *state = MemHive_GetModuleStateByObj((PyObject*)o);
+
+    if (o->r_used) {
+        PyErr_SetString(
+            PyExc_ValueError,
+            "QueueResponse object was used before");
+        return NULL;
+    }
+
+    if (kwargs != NULL) {
+        PyErr_SetString(
+            PyExc_TypeError,
+            "QueueResponse() does not support keyword arguments");
+        return NULL;
+    }
+
+    PyObject *ret = NULL;
+    if (!PyArg_UnpackTuple(args, QUEUE_RESPONSE_TYPENAME, 1, 1, &ret)) {
+        return NULL;
+    }
+    assert(ret != NULL);
+    TRACK(state, ret);
+
+    o->r_used = 1;
+
+    if (o->r_dir == D_FROM_SUB) {
+        MemHive *hive = (MemHive *)(((MemHiveSub *)o->r_owner)->hive);
+        int r = MemQueue_Push(
+            &hive->for_main, o->r_channel,
+            o->r_owner, ret);
+        if (r) {
+            return NULL;
+        }
+        Py_RETURN_NONE;
+    } else {
+        abort();
+    }
+}
+
+static int
+mq_resp_tp_traverse(MemQueueResponse *self, visitproc visit, void *arg)
+{
+    Py_VISIT(Py_TYPE(self));
+    Py_VISIT(self->r_owner);
+    return 0;
+}
+
+static int
+mq_resp_tp_clear(MemQueueResponse *self)
+{
+    Py_CLEAR(self->r_owner);
+    return 0;
+}
+
+static void
+mq_resp_tp_dealloc(MemQueueResponse *self)
+{
+    PyTypeObject *tp = Py_TYPE(self);
+    PyObject_GC_UnTrack(self);
+    (void)mq_resp_tp_clear(self);
+    Py_TYPE(self)->tp_free(self);
+    Py_DecRef((PyObject*)tp);
+}
+
+PyType_Slot MemQueueResponse_TypeSlots[] = {
+    {Py_tp_dealloc, (destructor)mq_resp_tp_dealloc},
+    {Py_tp_traverse, (traverseproc)mq_resp_tp_traverse},
+    {Py_tp_clear, (inquiry)mq_resp_tp_clear},
+    {Py_tp_call, mq_resp_tp_call},
+    {0, NULL},
+};
+
+PyType_Spec MemQueueResponse_TypeSpec = {
+    .name = QUEUE_RESPONSE_TYPENAME,
+    .basicsize = sizeof(MemQueueResponse),
+    .itemsize = 0,
+    .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
+    .slots = MemQueueResponse_TypeSlots,
+};

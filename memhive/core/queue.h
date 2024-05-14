@@ -23,6 +23,18 @@ typedef struct {
 } MemQueue;
 
 typedef enum {E_BROADCAST, E_REQUEST, E_PUSH} memqueue_event_t;
+typedef enum {D_FROM_MAIN, D_FROM_SUB} memqueue_direction_t;
+
+typedef struct {
+    PyObject_HEAD
+    PyObject *r_owner;
+    memqueue_direction_t r_dir;
+    memqueue_event_t r_kind;
+    ssize_t r_channel;
+    uint8_t r_used;
+} MemQueueResponse;
+
+extern PyType_Spec MemQueueResponse_TypeSpec;
 
 ssize_t
 MemQueue_AddChannel(MemQueue *queue);
@@ -30,8 +42,8 @@ MemQueue_AddChannel(MemQueue *queue);
 int
 MemQueue_Broadcast(MemQueue *queue, PyObject *sender, PyObject *msg);
 
-PyObject *
-MemQueue_Push(MemQueue *queue, PyObject *sender, PyObject *val);
+int
+MemQueue_Push(MemQueue *queue, ssize_t channel, PyObject *sender, PyObject *val);
 
 PyObject *
 MemQueue_Request(MemQueue *queue, ssize_t channel, PyObject *sender, PyObject *val);
@@ -49,6 +61,12 @@ MemQueue_Close(MemQueue *queue);
 
 void
 MemQueue_Destroy(MemQueue *queue);
+
+PyObject *
+MemQueueResponse_New(module_state *state,
+                     PyObject *owner, memqueue_direction_t dir,
+                     ssize_t channel,
+                     memqueue_event_t kind);
 
 
 #endif

@@ -35,7 +35,8 @@ typedef struct {
 
     PyTypeObject *MemHive_Type;
     PyTypeObject *MemHiveSub_Type;
-    PyTypeObject *MemQueue_Type;
+
+    PyTypeObject *MemQueueResponseType;
 
     struct ProxyDescriptor *proxy_desc_template;
 

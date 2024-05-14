@@ -52,9 +52,11 @@ class Executor:
             sys.path = ''' + repr(sys.path) + '''
 
             import memhive.core as chive
-            mem = chive.MemHiveSub(''' + repr(id(self._mem)) + ''')
-
             is_debug = hasattr(chive, 'enable_object_tracking')
+            if is_debug:
+                chive.enable_object_tracking()
+
+            mem = chive.MemHiveSub(''' + repr(id(self._mem)) + ''')
 
             STOP = 0
             def dd():
@@ -64,14 +66,12 @@ class Executor:
             tt = threading.Thread(target=dd)
             tt.start()
 
-            if is_debug:
-                chive.enable_object_tracking()
-
             try:
                 while True:
                     mem.do_refs()
 
-                    p = mem.get()
+                    p, resp = mem.listen()
+                    print('SUB LISTEN', p)
                     mem.do_refs()
 
                     idx, func_name, func_code, args = p
@@ -80,7 +80,8 @@ class Executor:
                     func = types.FunctionType(func_code, globals(), func_name)
 
                     ret = (idx, func(mem, *args))
-                    mem.push(ret)
+                    resp(ret)
+                    # mem.push(ret)
 
                     # if is_debug:
                     #     chive.disable_object_tracking()

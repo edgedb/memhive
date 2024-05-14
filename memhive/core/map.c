@@ -4045,6 +4045,7 @@ map_py_repr(BaseMapObject *m)
             if (s == NULL) {
                 goto error;
             }
+            TRACK(state, s);
             if (_PyUnicodeWriter_WriteStr(&writer, s) < 0) {
                 DECREF(state, s);
                 goto error;

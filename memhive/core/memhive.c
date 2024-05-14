@@ -220,7 +220,10 @@ memhive_py_push(MemHive *o, PyObject *val)
     #endif
 
     TRACK(state, val);
-    return MemQueue_Push(&o->for_subs, (PyObject*)o, val);
+    if (MemQueue_Push(&o->for_subs, 0, (PyObject*)o, val)) {
+        return NULL;
+    }
+    Py_RETURN_NONE;
 }
 
 static PyObject *
