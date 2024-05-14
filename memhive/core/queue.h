@@ -47,7 +47,7 @@ MemQueue_Init(MemQueue *queue);
 int
 MemQueue_Close(MemQueue *queue);
 
-int
+void
 MemQueue_Destroy(MemQueue *queue);
 
 

@@ -305,12 +305,12 @@ MemQueue_Close(MemQueue *queue)
     return 0;
 }
 
-int
+void
 MemQueue_Destroy(MemQueue *queue)
 {
     assert(queue->closed);
     if (queue->destroyed) {
-        return 0;
+        return;
     }
     queue->destroyed = 1;
     if (pthread_mutex_trylock(&queue->mut)) {
@@ -324,6 +324,4 @@ MemQueue_Destroy(MemQueue *queue)
     if (pthread_mutex_destroy(&queue->mut)) {
         Py_FatalError("clould not destroy the lock in MemQueue_Destroy");
     }
-
-    return 0;
 }

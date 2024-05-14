@@ -159,3 +159,4 @@ class Executor:
         for t in self._workers:
             t.join()
         self._workers = []
+        self._mem.close()

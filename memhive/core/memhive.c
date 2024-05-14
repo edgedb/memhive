@@ -101,6 +101,9 @@ memhive_tp_dealloc(MemHive *o)
     }
     o->subs_list = NULL;
 
+    MemQueue_Destroy(&o->for_main);
+    MemQueue_Destroy(&o->for_subs);
+
     PyObject_Del(o);
 }
 
@@ -253,6 +256,16 @@ memhive_py_close_subs_intake(MemHive *o, PyObject *args)
 }
 
 static PyObject *
+memhive_py_close(MemHive *o, PyObject *args)
+{
+    int ret = MemQueue_Close(&o->for_subs);
+    assert(ret == 0);
+    ret = MemQueue_Close(&o->for_main);
+    assert(ret == 0);
+    Py_RETURN_NONE;
+}
+
+static PyObject *
 memhive_py_do_refs(MemHive *o, PyObject *args)
 {
     module_state *state = MemHive_GetModuleStateByObj((PyObject *)o);
@@ -265,6 +278,7 @@ static PyMethodDef MemHive_methods[] = {
     {"push", (PyCFunction)memhive_py_push, METH_O, NULL},
     {"get", (PyCFunction)memhive_py_get, METH_NOARGS, NULL},
     {"close_subs_intake", (PyCFunction)memhive_py_close_subs_intake, METH_NOARGS, NULL},
+    {"close", (PyCFunction)memhive_py_close, METH_NOARGS, NULL},
     {"do_refs", (PyCFunction)memhive_py_do_refs, METH_NOARGS, NULL},
     {NULL, NULL}
 };
