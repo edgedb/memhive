@@ -4,9 +4,6 @@
 #define MAX_REUSE 100
 
 struct item {
-    // A borrowed ref; the lifetime will have to be managed
-    // outside. `item` objects should be free-able from other
-    // threads as they "pop" them from the queue.
     PyObject *val;
     PyObject *sender;
     struct item *next;
