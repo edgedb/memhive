@@ -324,4 +324,23 @@ MemQueue_Destroy(MemQueue *queue)
     if (pthread_mutex_destroy(&queue->mut)) {
         Py_FatalError("clould not destroy the lock in MemQueue_Destroy");
     }
+
+    while(queue->reuse != NULL) {
+        struct item *next = queue->reuse->next;
+        PyMem_RawFree(queue->reuse);
+        queue->reuse = next;
+    }
+    queue->reuse_num = 0;
+
+    for (ssize_t i = 0; i < queue->nqueues; i++) {
+        struct queue *q = &queue->queues[i];
+        while (q->first != NULL) {
+            struct item *next = q->first->next;
+            PyMem_Free(q->first);
+            q->first = next;
+        }
+    }
+    PyMem_RawFree(queue->queues);
+    queue->queues = NULL;
+    queue->nqueues = 0;
 }
