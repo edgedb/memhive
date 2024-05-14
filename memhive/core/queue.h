@@ -11,8 +11,13 @@
 typedef struct {
     pthread_mutex_t mut;
     pthread_cond_t cond;
+
     struct queue *queues;
     ssize_t nqueues;
+
+    struct item *reuse;
+    ssize_t reuse_num;
+
     uint8_t closed;
     uint8_t destroyed;
 } MemQueue;

@@ -1,6 +1,8 @@
 #include "queue.h"
 #include "utils.h"
 
+#define MAX_REUSE 100
+
 struct item {
     // A borrowed ref; the lifetime will have to be managed
     // outside. `item` objects should be free-able from other
@@ -53,10 +55,17 @@ queue_put(MemQueue *queue, struct queue *q,
     // The lock must be held for this operation
 
     struct item *i;
-    i = malloc(sizeof *i);
-    if (i == NULL) {
-        PyErr_NoMemory();
-        return -1;
+
+    if (queue->reuse_num > 0) {
+        i = queue->reuse;
+        queue->reuse = i->next;
+        queue->reuse_num--;
+    } else {
+        i = PyMem_RawMalloc(sizeof *i);
+        if (i == NULL) {
+            PyErr_NoMemory();
+            return -1;
+        }
     }
 
     Py_INCREF(val);
@@ -105,6 +114,9 @@ MemQueue_Init(MemQueue *o)
     o->queues[0].length = 0;
 
     o->nqueues = 1;
+
+    o->reuse = NULL;
+    o->reuse_num = 0;
 
     o->closed = 0;
     o->destroyed = 0;
@@ -261,7 +273,16 @@ MemQueue_Listen(MemQueue *queue, module_state *state,
         q->length = 0;
     }
 
-    free(prev_first);
+    if (queue->reuse_num < MAX_REUSE) {
+        prev_first->sender = NULL;
+        prev_first->val = NULL;
+        prev_first->next = queue->reuse;
+        queue->reuse = prev_first;
+        queue->reuse_num++;
+    } else {
+        PyMem_RawFree(prev_first);
+    }
+
     queue_unlock(queue);
 
     return 0;
