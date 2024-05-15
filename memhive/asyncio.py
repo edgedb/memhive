@@ -69,15 +69,15 @@ class AsyncMemHive:
 
     def __getitem__(self, key):
         self._ensure_active()
-        return self._hive[key]
+        return self._hive._mem[key]
 
     def __contains__(self, key):
         self._ensure_active()
-        return key in self._m_hiveem
+        return key in self._hive._mem
 
     def __setitem__(self, key, val):
         self._ensure_active()
-        self._hive[key] = val
+        self._hive._mem[key] = val
 
     def add_worker(self, **kwargs):
         self._hive.add_worker(**kwargs)
