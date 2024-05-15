@@ -32,6 +32,8 @@ class MemHive:
         self._mem[key] = val
 
     def add_worker(self, func):
+        # XXX: add_worker is racy and returns *before* the MemHiveSub
+        # object is constructed. That shouldn't be the case.
         def runner(code):
             sub = subint.create(isolated=True)
             try:
