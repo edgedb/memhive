@@ -82,7 +82,9 @@ PyObject * MemHive_Get(module_state *state, MemHive *hive, PyObject *key);
 int MemHive_Contains(module_state *state, MemHive *hive, PyObject *key);
 
 ssize_t
-MemHive_RegisterSub(MemHive *hive, MemHiveSub *sub);
+MemHive_RegisterSub(MemHive *hive, MemHiveSub *sub, module_state *state);
 
+void
+MemHive_UnregisterSub(MemHive *hive, MemHiveSub *sub);
 
 #endif

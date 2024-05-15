@@ -17,12 +17,6 @@ memhive_sub_tp_init(MemHiveSub *o, PyObject *args, PyObject *kwds)
 
     o->hive = (DistantPyObject*)hive_ptr;
 
-    ssize_t channel = MemHive_RegisterSub((MemHive*)o->hive, o);
-    if (channel < 0) {
-        return -1;
-    }
-    o->channel = channel;
-
     o->main_refs = MemHive_RefQueue_New();
     if (o->main_refs == NULL) {
         return -1;
@@ -38,8 +32,15 @@ memhive_sub_tp_init(MemHiveSub *o, PyObject *args, PyObject *kwds)
     }
 
     module_state *state = MemHive_GetModuleStateByPythonType(Py_TYPE(o));
+
     state->sub = (PyObject*)o;
     Py_INCREF(state->sub);
+
+    ssize_t channel = MemHive_RegisterSub((MemHive*)o->hive, o, state);
+    if (channel < 0) {
+        return -1;
+    }
+    o->channel = channel;
 
     o->closed = 0;
 
@@ -162,7 +163,7 @@ memhive_sub_py_request(MemHiveSub *o, PyObject *arg)
     module_state *state = MemHive_GetModuleStateByObj((PyObject*)o);
     #endif
     TRACK(state, arg);
-    if (MemQueue_Request(q, 0, (PyObject*)o, arg)) {
+    if (MemQueue_Request(q, state, 0, (PyObject*)o, arg)) {
         return NULL;
     }
     Py_RETURN_NONE;
@@ -192,6 +193,7 @@ memhive_sub_py_close(MemHiveSub *o, PyObject *args)
         return NULL;
     }
     MemHive_RefQueue_Run(o->subs_refs, state);
+    MemHive_UnregisterSub((MemHive*)o->hive, o);
     Py_RETURN_NONE;
 }
 

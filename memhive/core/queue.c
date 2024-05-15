@@ -28,7 +28,7 @@ queue_unlock(MemQueue *queue)
 }
 
 static int
-queue_lock(MemQueue *queue)
+queue_lock(MemQueue *queue, module_state *state)
 {
     if ((queue)->destroyed) {
         Py_FatalError("queue has been destroyed");
@@ -42,7 +42,8 @@ queue_lock(MemQueue *queue)
     }
     if ((queue)->closed == 1) {
         queue_unlock(queue);
-        PyErr_SetString(PyExc_ValueError, "the queue is closed");
+        PyErr_SetString(state->ClosedQueueError,
+                        "can't get, the queue is closed");
         return -1;
     }
     return 0;
@@ -124,11 +125,11 @@ MemQueue_Init(MemQueue *o)
 }
 
 ssize_t
-MemQueue_AddChannel(MemQueue *queue)
+MemQueue_AddChannel(MemQueue *queue, module_state *state)
 {
     ssize_t channel;
 
-    if (queue_lock(queue)) {
+    if (queue_lock(queue, state)) {
         return -1;
     }
 
@@ -161,9 +162,10 @@ err:
 }
 
 int
-MemQueue_Broadcast(MemQueue *queue, PyObject *sender, PyObject *msg)
+MemQueue_Broadcast(MemQueue *queue,  module_state *state,
+                   PyObject *sender, PyObject *msg)
 {
-    if (queue_lock(queue)) {
+    if (queue_lock(queue, state)) {
         return -1;
     }
 
@@ -179,9 +181,10 @@ MemQueue_Broadcast(MemQueue *queue, PyObject *sender, PyObject *msg)
 }
 
 int
-MemQueue_Request(MemQueue *queue, ssize_t channel, PyObject *sender, PyObject *val)
+MemQueue_Request(MemQueue *queue, module_state *state,
+                 ssize_t channel, PyObject *sender, PyObject *val)
 {
-    if (queue_lock(queue)) {
+    if (queue_lock(queue, state)) {
         return -1;
     }
 
@@ -196,9 +199,10 @@ MemQueue_Request(MemQueue *queue, ssize_t channel, PyObject *sender, PyObject *v
 }
 
 int
-MemQueue_Push(MemQueue *queue, ssize_t channel, PyObject *sender, PyObject *val)
+MemQueue_Push(MemQueue *queue, module_state *state,
+              ssize_t channel, PyObject *sender, PyObject *val)
 {
-    if (queue_lock(queue)) {
+    if (queue_lock(queue, state)) {
         return -1;
     }
 
@@ -216,7 +220,7 @@ MemQueue_Listen(MemQueue *queue, module_state *state,
                 ssize_t channel,
                 memqueue_event_t *event, PyObject **sender, PyObject **val)
 {
-    if (queue_lock(queue)) {
+    if (queue_lock(queue, state)) {
         return -1;
     }
 
@@ -237,12 +241,7 @@ MemQueue_Listen(MemQueue *queue, module_state *state,
         Py_END_ALLOW_THREADS
         if (PyErr_CheckSignals()) {
             queue_unlock(queue);
-            if (queue->closed == 1) {
-                PyErr_SetString(state->ClosedQueueError,
-                                "can't get, the queue is closed");
-                return -1;
-            }
-            continue;
+            return -1;
         }
     }
 
@@ -288,14 +287,12 @@ MemQueue_Listen(MemQueue *queue, module_state *state,
 }
 
 int
-MemQueue_Close(MemQueue *queue)
+MemQueue_Close(MemQueue *queue, module_state *state)
 {
-    // OK to read `queue->closed` without the lock as only
-    // the owner thread can set it.
     if (queue->closed == 1) {
         return 0;
     }
-    if (queue_lock(queue)) {
+    if (queue_lock(queue, state)) {
         return -1;
     }
     queue->closed = 1;
@@ -307,7 +304,6 @@ MemQueue_Close(MemQueue *queue)
 void
 MemQueue_Destroy(MemQueue *queue)
 {
-    printf("=== QUEUE DESTROY === \n");
     assert(queue->closed);
     if (queue->destroyed) {
         return;
@@ -410,7 +406,7 @@ mq_resp_tp_call(MemQueueReplyCallback *o, PyObject *args, PyObject *kwargs)
     if (o->r_dir == D_FROM_SUB) {
         MemHive *hive = (MemHive *)(((MemHiveSub *)o->r_owner)->hive);
         int r = MemQueue_Push(
-            &hive->for_main, o->r_channel,
+            &hive->for_main, state, o->r_channel,
             o->r_owner, ret);
         if (r) {
             return NULL;
@@ -419,7 +415,7 @@ mq_resp_tp_call(MemQueueReplyCallback *o, PyObject *args, PyObject *kwargs)
     } else if (o->r_dir == D_FROM_MAIN) {
         MemHive *hive = (MemHive *)o->r_owner;
         int r = MemQueue_Request(
-            &hive->for_subs, o->r_channel,
+            &hive->for_subs, state, o->r_channel,
             o->r_owner, ret);
         if (r) {
             return NULL;

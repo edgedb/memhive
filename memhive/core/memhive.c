@@ -40,8 +40,8 @@ err:
 }
 
 ssize_t
-MemHive_RegisterSub(MemHive *hive, MemHiveSub *sub) {
-    SubsList *cnt = malloc(sizeof (SubsList));
+MemHive_RegisterSub(MemHive *hive, MemHiveSub *sub, module_state *state) {
+    SubsList *cnt = PyMem_RawMalloc(sizeof (SubsList));
     if (cnt == NULL) {
         PyErr_NoMemory();
         return -1;
@@ -56,10 +56,40 @@ MemHive_RegisterSub(MemHive *hive, MemHiveSub *sub) {
         hive->subs_list = cnt;
     }
 
-    ssize_t channel = MemQueue_AddChannel(&hive->for_subs);
+    ssize_t channel = MemQueue_AddChannel(&hive->for_subs, state);
     pthread_mutex_unlock(&hive->subs_list_mut);
 
     return channel;
+}
+
+void
+MemHive_UnregisterSub(MemHive *hive, MemHiveSub *sub) {
+    int removed = 0;
+
+    pthread_mutex_lock(&hive->subs_list_mut);
+
+    SubsList *temp = hive->subs_list;
+    SubsList *prev = NULL;
+
+    if (temp != NULL && temp->sub == sub) {
+        hive->subs_list = temp->next;
+        PyMem_RawFree(temp);
+        removed = 1;
+    } else {
+        while (temp != NULL && temp->sub != sub) {
+            prev = temp;
+            temp = temp->next;
+        }
+        if (temp != NULL) {
+            prev->next = temp->next;
+            PyMem_RawFree(temp);
+            removed = 1;
+        }
+    }
+
+    pthread_mutex_unlock(&hive->subs_list_mut);
+
+    assert(removed);
 }
 
 static void
@@ -98,7 +128,7 @@ memhive_tp_dealloc(MemHive *o)
     SubsList *l = o->subs_list;
     while (l != NULL) {
         SubsList *next = l->next;
-        free(l);
+        PyMem_RawFree(l);
         l = next;
     }
     o->subs_list = NULL;
@@ -217,12 +247,10 @@ MemHive_Contains(module_state *state, MemHive *hive, PyObject *key)
 static PyObject *
 memhive_py_push(MemHive *o, PyObject *val)
 {
-    #ifdef DEBUG
     module_state *state = MemHive_GetModuleStateByObj((PyObject *)o);
-    #endif
 
     TRACK(state, val);
-    if (MemQueue_Push(&o->for_subs, 0, (PyObject*)o, val)) {
+    if (MemQueue_Push(&o->for_subs, state, 0, (PyObject*)o, val)) {
         return NULL;
     }
     Py_RETURN_NONE;
@@ -231,12 +259,10 @@ memhive_py_push(MemHive *o, PyObject *val)
 static PyObject *
 memhive_py_broadcast(MemHive *o, PyObject *val)
 {
-    #ifdef DEBUG
     module_state *state = MemHive_GetModuleStateByObj((PyObject *)o);
-    #endif
 
     TRACK(state, val);
-    if (MemQueue_Broadcast(&o->for_subs, (PyObject*)o, val)) {
+    if (MemQueue_Broadcast(&o->for_subs, state, (PyObject*)o, val)) {
         return NULL;
     }
     Py_RETURN_NONE;
@@ -294,9 +320,11 @@ err:
 }
 
 static PyObject *
-memhive_py_close_subs_intake(MemHive *o, PyObject *args)
+memhive_py_close_subs_queue(MemHive *o, PyObject *args)
 {
-    int ret = MemQueue_Close(&o->for_subs);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)o);
+    memhive_do_refs(o, state);
+    int ret = MemQueue_Close(&o->for_subs, state);
     assert(ret == 0);
     Py_RETURN_NONE;
 }
@@ -304,9 +332,11 @@ memhive_py_close_subs_intake(MemHive *o, PyObject *args)
 static PyObject *
 memhive_py_close(MemHive *o, PyObject *args)
 {
-    int ret = MemQueue_Close(&o->for_subs);
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)o);
+    memhive_do_refs(o, state);
+    int ret = MemQueue_Close(&o->for_subs, state);
     assert(ret == 0);
-    ret = MemQueue_Close(&o->for_main);
+    ret = MemQueue_Close(&o->for_main, state);
     assert(ret == 0);
     Py_RETURN_NONE;
 }
@@ -324,7 +354,7 @@ static PyMethodDef MemHive_methods[] = {
     {"broadcast", (PyCFunction)memhive_py_broadcast, METH_O, NULL},
     {"push", (PyCFunction)memhive_py_push, METH_O, NULL},
     {"listen", (PyCFunction)memhive_py_listen, METH_NOARGS, NULL},
-    {"close_subs_intake", (PyCFunction)memhive_py_close_subs_intake, METH_NOARGS, NULL},
+    {"close_subs_queue", (PyCFunction)memhive_py_close_subs_queue, METH_NOARGS, NULL},
     {"close", (PyCFunction)memhive_py_close, METH_NOARGS, NULL},
     {"process_refs", (PyCFunction)memhive_py_do_refs, METH_NOARGS, NULL},
     {NULL, NULL}

@@ -38,16 +38,19 @@ extern PyType_Spec MemQueueReplyCallback_TypeSpec;
 extern PyStructSequence_Desc QueueMessage_Desc;
 
 ssize_t
-MemQueue_AddChannel(MemQueue *queue);
+MemQueue_AddChannel(MemQueue *queue, module_state *state);
 
 int
-MemQueue_Broadcast(MemQueue *queue, PyObject *sender, PyObject *msg);
+MemQueue_Broadcast(MemQueue *queue,  module_state *state,
+                   PyObject *sender, PyObject *msg);
 
 int
-MemQueue_Push(MemQueue *queue, ssize_t channel, PyObject *sender, PyObject *val);
+MemQueue_Push(MemQueue *queue, module_state *state,
+              ssize_t channel, PyObject *sender, PyObject *val);
 
 int
-MemQueue_Request(MemQueue *queue, ssize_t channel, PyObject *sender, PyObject *val);
+MemQueue_Request(MemQueue *queue, module_state *state,
+                 ssize_t channel, PyObject *sender, PyObject *val);
 
 int
 MemQueue_Listen(MemQueue *queue, module_state *state,
@@ -58,7 +61,7 @@ int
 MemQueue_Init(MemQueue *queue);
 
 int
-MemQueue_Close(MemQueue *queue);
+MemQueue_Close(MemQueue *queue, module_state *state);
 
 void
 MemQueue_Destroy(MemQueue *queue);

@@ -12,7 +12,7 @@ struct item {
 RefQueue *
 MemHive_RefQueue_New(void)
 {
-    RefQueue *q = malloc(sizeof(RefQueue));
+    RefQueue *q = PyMem_RawMalloc(sizeof(RefQueue));
     if (q == NULL) {
         PyErr_NoMemory();
         return NULL;
@@ -56,7 +56,7 @@ push_incdec(RefQueue *q, PyObject *obj, int is_inc)
         q->reuse = cnt->next;
         q->reuse_num--;
     } else {
-        cnt = malloc(sizeof *cnt);
+        cnt = PyMem_RawMalloc(sizeof *cnt);
         if (cnt == NULL) {
             pthread_mutex_unlock(&q->mut);
             PyErr_NoMemory();
@@ -168,7 +168,7 @@ MemHive_RefQueue_Run(RefQueue *q, module_state *state)
     while (to_reuse != NULL) {
         struct item* next = to_reuse;
         to_reuse = to_reuse->next;
-        free(next);
+        PyMem_RawFree(next);
     }
 }
 
@@ -192,7 +192,7 @@ MemHive_RefQueue_Destroy(RefQueue *q)
 
     while (q->reuse != NULL) {
         struct item* next = q->reuse->next;
-        free(q->reuse);
+        PyMem_RawFree(q->reuse);
         q->reuse = next;
         q->reuse_num--;
     }
