@@ -324,7 +324,7 @@ Further Reading
                     Py_FatalError("Failed to remotely incref node");          \
                 }                                                             \
             } else {                                                          \
-                Py_FatalError("Unreachable node condition");                  \
+                Py_FatalError("destructing HAMT node after the sub is gone"); \
             }                                                                 \
         }                                                                     \
     } while(0);

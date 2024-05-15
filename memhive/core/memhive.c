@@ -30,6 +30,8 @@ memhive_tp_init(MemHive *o, PyObject *args, PyObject *kwds)
         Py_FatalError("Failed to initialize a mutex");
     }
 
+    TRACK(state, o);
+
     return 0;
 
 err:

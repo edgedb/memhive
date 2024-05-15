@@ -38,6 +38,8 @@ typedef struct {
 
     RefQueue *main_refs;
     RefQueue *subs_refs;
+
+    uint8_t closed;
 } MemHiveSub;
 
 

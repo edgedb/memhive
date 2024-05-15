@@ -91,7 +91,7 @@ class Executor:
             finally:
                 STOP = 1
                 tt.join()
-                mem.do_refs()
+                mem.close()
             \n''')
 
             sub = subint.create(isolated=True)
@@ -160,4 +160,5 @@ class Executor:
         for t in self._workers:
             t.join()
         self._workers = []
+        self._mem.do_refs()
         self._mem.close()

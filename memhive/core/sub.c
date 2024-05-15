@@ -33,12 +33,29 @@ memhive_sub_tp_init(MemHiveSub *o, PyObject *args, PyObject *kwds)
         return -1;
     }
 
+    if (MemHive_RefQueue_Inc(o->main_refs, o->hive)) {
+        return -1;
+    }
+
     module_state *state = MemHive_GetModuleStateByPythonType(Py_TYPE(o));
     state->sub = (PyObject*)o;
     Py_INCREF(state->sub);
 
+    o->closed = 0;
+
     TRACK(state, o);
 
+    return 0;
+}
+
+
+static int
+memhive_ensure_open(MemHiveSub *o)
+{
+    if (o->closed) {
+        PyErr_SetString(PyExc_ValueError, "subinterpreter is closing");
+        return -1;
+    }
     return 0;
 }
 
@@ -47,6 +64,9 @@ static Py_ssize_t
 memhive_sub_tp_len(MemHiveSub *o)
 {
     // It's safe to do this because MemHive's tp_len is protected by a mutex.
+    if (memhive_ensure_open(o)) {
+        return -1;
+    }
     return PyObject_Length(o->hive);
 }
 
@@ -60,6 +80,9 @@ memhive_sub_tp_dealloc(MemHiveSub *o)
 static PyObject *
 memhive_sub_tp_subscript(MemHiveSub *o, PyObject *key)
 {
+    if (memhive_ensure_open(o)) {
+        return NULL;
+    }
     module_state *state = PyType_GetModuleState(Py_TYPE(o));
     return MemHive_Get(state, (MemHive *)o->hive, key);
 }
@@ -67,6 +90,9 @@ memhive_sub_tp_subscript(MemHiveSub *o, PyObject *key)
 static int
 memhive_sub_tp_contains(MemHiveSub *o, PyObject *key)
 {
+    if (memhive_ensure_open(o)) {
+        return -1;
+    }
     module_state *state = PyType_GetModuleState(Py_TYPE(o));
     return MemHive_Contains(state, (MemHive *)o->hive, key);
 }
@@ -74,6 +100,9 @@ memhive_sub_tp_contains(MemHiveSub *o, PyObject *key)
 static PyObject *
 memhive_sub_py_push(MemHiveSub *o, PyObject *val)
 {
+    if (memhive_ensure_open(o)) {
+        return NULL;
+    }
     MemQueue *q = &((MemHive *)o->hive)->for_main;
     #ifdef DEBUG
     module_state *state = MemHive_GetModuleStateByObj((PyObject*)o);
@@ -88,6 +117,10 @@ memhive_sub_py_push(MemHiveSub *o, PyObject *val)
 static PyObject *
 memhive_sub_py_listen(MemHiveSub *o, PyObject *args)
 {
+    if (memhive_ensure_open(o)) {
+        return NULL;
+    }
+
     module_state *state = MemHive_GetModuleStateByObj((PyObject*)o);
     MemQueue *q = &((MemHive *)o->hive)->for_subs;
 
@@ -140,16 +173,34 @@ err:
 static PyObject *
 memhive_sub_py_do_refs(MemHiveSub *o, PyObject *args)
 {
+    if (memhive_ensure_open(o)) {
+        return NULL;
+    }
     module_state *state = MemHive_GetModuleStateByObj((PyObject *)o);
     MemHive_RefQueue_Run(o->subs_refs, state);
     Py_RETURN_NONE;
 }
 
+static PyObject *
+memhive_sub_py_close(MemHiveSub *o, PyObject *args)
+{
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)o);
+    if (o->closed) {
+        Py_RETURN_NONE;
+    }
+    o->closed = 1;
+    if (MemHive_RefQueue_Dec(o->main_refs, o->hive)) {
+        return NULL;
+    }
+    MemHive_RefQueue_Run(o->subs_refs, state);
+    Py_RETURN_NONE;
+}
 
 static PyMethodDef MemHiveSub_methods[] = {
     {"push", (PyCFunction)memhive_sub_py_push, METH_O, NULL},
     {"listen", (PyCFunction)memhive_sub_py_listen, METH_NOARGS, NULL},
     {"do_refs", (PyCFunction)memhive_sub_py_do_refs, METH_NOARGS, NULL},
+    {"close", (PyCFunction)memhive_sub_py_close, METH_NOARGS, NULL},
     {NULL, NULL}
 };
 
