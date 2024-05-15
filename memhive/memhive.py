@@ -71,6 +71,9 @@ class MemHive:
     def __exit__(self, *e):
         self.close()
 
+    def process_refs(self):
+        self._mem.process_refs()
+
     def close(self):
         if self._closed:
             return
