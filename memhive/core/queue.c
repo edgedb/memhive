@@ -350,13 +350,13 @@ MemQueue_Destroy(MemQueue *queue)
 
 
 PyObject *
-MemQueueResponse_New(module_state *state,
-                     PyObject *owner, memqueue_direction_t dir,
-                     ssize_t channel,
-                     memqueue_event_t kind)
+MemQueueReplyCallback_New(module_state *state,
+                          PyObject *owner, memqueue_direction_t dir,
+                          ssize_t channel,
+                          memqueue_event_t kind)
 {
-    MemQueueResponse *o = PyObject_GC_New(
-        MemQueueResponse, state->MemQueueResponseType);
+    MemQueueReplyCallback *o = PyObject_GC_New(
+        MemQueueReplyCallback, state->MemQueueReplyCallbackType);
     if (o == NULL) {
         return NULL;
     }
@@ -380,7 +380,7 @@ MemQueueResponse_New(module_state *state,
 }
 
 static PyObject *
-mq_resp_tp_call(MemQueueResponse *o, PyObject *args, PyObject *kwargs)
+mq_resp_tp_call(MemQueueReplyCallback *o, PyObject *args, PyObject *kwargs)
 {
     module_state *state = MemHive_GetModuleStateByObj((PyObject*)o);
 
@@ -422,7 +422,7 @@ mq_resp_tp_call(MemQueueResponse *o, PyObject *args, PyObject *kwargs)
 }
 
 static int
-mq_resp_tp_traverse(MemQueueResponse *self, visitproc visit, void *arg)
+mq_resp_tp_traverse(MemQueueReplyCallback *self, visitproc visit, void *arg)
 {
     Py_VISIT(Py_TYPE(self));
     Py_VISIT(self->r_owner);
@@ -430,14 +430,14 @@ mq_resp_tp_traverse(MemQueueResponse *self, visitproc visit, void *arg)
 }
 
 static int
-mq_resp_tp_clear(MemQueueResponse *self)
+mq_resp_tp_clear(MemQueueReplyCallback *self)
 {
     Py_CLEAR(self->r_owner);
     return 0;
 }
 
 static void
-mq_resp_tp_dealloc(MemQueueResponse *self)
+mq_resp_tp_dealloc(MemQueueReplyCallback *self)
 {
     PyTypeObject *tp = Py_TYPE(self);
     PyObject_GC_UnTrack(self);
@@ -446,7 +446,7 @@ mq_resp_tp_dealloc(MemQueueResponse *self)
     Py_DecRef((PyObject*)tp);
 }
 
-PyType_Slot MemQueueResponse_TypeSlots[] = {
+PyType_Slot MemQueueReplyCallback_TypeSlots[] = {
     {Py_tp_dealloc, (destructor)mq_resp_tp_dealloc},
     {Py_tp_traverse, (traverseproc)mq_resp_tp_traverse},
     {Py_tp_clear, (inquiry)mq_resp_tp_clear},
@@ -454,12 +454,12 @@ PyType_Slot MemQueueResponse_TypeSlots[] = {
     {0, NULL},
 };
 
-PyType_Spec MemQueueResponse_TypeSpec = {
+PyType_Spec MemQueueReplyCallback_TypeSpec = {
     .name = QUEUE_RESPONSE_TYPENAME,
-    .basicsize = sizeof(MemQueueResponse),
+    .basicsize = sizeof(MemQueueReplyCallback),
     .itemsize = 0,
     .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
-    .slots = MemQueueResponse_TypeSlots,
+    .slots = MemQueueReplyCallback_TypeSlots,
 };
 
 

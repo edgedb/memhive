@@ -127,7 +127,8 @@ memhive_sub_py_listen(MemHiveSub *o, PyObject *args)
         goto err;
     }
 
-    resp = MemQueueResponse_New(state, (PyObject *)o, D_FROM_SUB, 0, E_PUSH);
+    resp = MemQueueReplyCallback_New(
+        state, (PyObject *)o, D_FROM_SUB, 0, E_PUSH);
     if (resp == NULL) {
         goto err;
     }
