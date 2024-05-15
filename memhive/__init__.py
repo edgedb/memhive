@@ -154,6 +154,8 @@ class Executor:
                 print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!', x2)
                 x2.reply((x2.payload, 'yo'))
 
+                self._mem.broadcast('doneeeee')
+
             return list(res.values())
 
         except KeyboardInterrupt:

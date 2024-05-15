@@ -229,6 +229,20 @@ memhive_py_push(MemHive *o, PyObject *val)
 }
 
 static PyObject *
+memhive_py_broadcast(MemHive *o, PyObject *val)
+{
+    #ifdef DEBUG
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)o);
+    #endif
+
+    TRACK(state, val);
+    if (MemQueue_Broadcast(&o->for_subs, (PyObject*)o, val)) {
+        return NULL;
+    }
+    Py_RETURN_NONE;
+}
+
+static PyObject *
 memhive_py_listen(MemHive *o, PyObject *args)
 {
     module_state *state = MemHive_GetModuleStateByObj((PyObject*)o);
@@ -307,6 +321,7 @@ memhive_py_do_refs(MemHive *o, PyObject *args)
 
 
 static PyMethodDef MemHive_methods[] = {
+    {"broadcast", (PyCFunction)memhive_py_broadcast, METH_O, NULL},
     {"push", (PyCFunction)memhive_py_push, METH_O, NULL},
     {"listen", (PyCFunction)memhive_py_listen, METH_NOARGS, NULL},
     {"close_subs_intake", (PyCFunction)memhive_py_close_subs_intake, METH_NOARGS, NULL},
