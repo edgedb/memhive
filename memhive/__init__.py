@@ -84,6 +84,12 @@ class Executor:
 
                     ret = (idx, func(mem, *args))
                     resp(ret)
+
+                    mem.request('foooooooooo!')
+                    print('!!!!!!!!!!!!aaaa')
+                    x = mem.listen()
+                    print('SUB LISTEN2', x)
+
                     # mem.push(ret)
 
                     # if is_debug:
@@ -141,8 +147,12 @@ class Executor:
     def get(self, res):
         try:
             for _ in range(len(res)):
-                ret = self._mem.get()
-                res[ret[0]] = ret[1]
+                x = self._mem.listen()
+                res[x.payload[0]] = x.payload[1]
+
+                x2 = self._mem.listen()
+                print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!', x2)
+                x2.reply((x2.payload, 'yo'))
 
             return list(res.values())
 

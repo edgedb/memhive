@@ -46,7 +46,7 @@ MemQueue_Broadcast(MemQueue *queue, PyObject *sender, PyObject *msg);
 int
 MemQueue_Push(MemQueue *queue, ssize_t channel, PyObject *sender, PyObject *val);
 
-PyObject *
+int
 MemQueue_Request(MemQueue *queue, ssize_t channel, PyObject *sender, PyObject *val);
 
 int

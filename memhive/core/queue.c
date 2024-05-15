@@ -178,21 +178,21 @@ MemQueue_Broadcast(MemQueue *queue, PyObject *sender, PyObject *msg)
     return 0;
 }
 
-PyObject *
+int
 MemQueue_Request(MemQueue *queue, ssize_t channel, PyObject *sender, PyObject *val)
 {
     if (queue_lock(queue)) {
-        return NULL;
+        return -1;
     }
 
     if (queue_put(queue, &queue->queues[channel], sender, E_REQUEST, val)) {
         queue_unlock(queue);
-        return NULL;
+        return -1;
     }
 
     queue_unlock(queue);
 
-    Py_RETURN_NONE;
+    return 0;
 }
 
 int
@@ -411,6 +411,15 @@ mq_resp_tp_call(MemQueueReplyCallback *o, PyObject *args, PyObject *kwargs)
         MemHive *hive = (MemHive *)(((MemHiveSub *)o->r_owner)->hive);
         int r = MemQueue_Push(
             &hive->for_main, o->r_channel,
+            o->r_owner, ret);
+        if (r) {
+            return NULL;
+        }
+        Py_RETURN_NONE;
+    } else if (o->r_dir == D_FROM_MAIN) {
+        MemHive *hive = (MemHive *)o->r_owner;
+        int r = MemQueue_Request(
+            &hive->for_subs, o->r_channel,
             o->r_owner, ret);
         if (r) {
             return NULL;

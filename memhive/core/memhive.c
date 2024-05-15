@@ -229,7 +229,7 @@ memhive_py_push(MemHive *o, PyObject *val)
 }
 
 static PyObject *
-memhive_py_get(MemHive *o, PyObject *args)
+memhive_py_listen(MemHive *o, PyObject *args)
 {
     module_state *state = MemHive_GetModuleStateByObj((PyObject*)o);
 
@@ -240,16 +240,43 @@ memhive_py_get(MemHive *o, PyObject *args)
         return NULL;
     }
 
-    PyObject *ret = MemHive_CopyObject(state, remote_val);
-    if (ret == NULL) {
-        return NULL;
+
+    PyObject *ret = NULL;
+    PyObject *resp = NULL;
+
+    PyObject *payload = MemHive_CopyObject(state, remote_val);
+    if (payload == NULL) {
+        goto err;
     }
 
-    if (MemHive_RefQueue_Dec(((MemHiveSub*)sender)->subs_refs, remote_val)) {
-        return NULL;
+    MemHiveSub *sub = (MemHiveSub*)sender;
+
+    if (MemHive_RefQueue_Dec(sub->subs_refs, remote_val)) {
+        goto err;
     }
+
+    if (event == E_REQUEST) {
+        resp = MemQueueReplyCallback_New(
+            state, (PyObject *)o, D_FROM_MAIN, sub->channel, E_REQUEST);
+        if (resp == NULL) {
+            goto err;
+        }
+    }
+
+    ret = MemQueueMessage_New(state, event, payload, resp);
+    if (ret == NULL) {
+        goto err;
+    }
+    Py_CLEAR(payload);
+    Py_CLEAR(resp);
 
     return ret;
+
+err:
+    Py_XDECREF(payload);
+    Py_XDECREF(resp);
+    Py_XDECREF(ret);
+    return NULL;
 }
 
 static PyObject *
@@ -281,7 +308,7 @@ memhive_py_do_refs(MemHive *o, PyObject *args)
 
 static PyMethodDef MemHive_methods[] = {
     {"push", (PyCFunction)memhive_py_push, METH_O, NULL},
-    {"get", (PyCFunction)memhive_py_get, METH_NOARGS, NULL},
+    {"listen", (PyCFunction)memhive_py_listen, METH_NOARGS, NULL},
     {"close_subs_intake", (PyCFunction)memhive_py_close_subs_intake, METH_NOARGS, NULL},
     {"close", (PyCFunction)memhive_py_close, METH_NOARGS, NULL},
     {"process_refs", (PyCFunction)memhive_py_do_refs, METH_NOARGS, NULL},
