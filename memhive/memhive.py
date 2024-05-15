@@ -82,7 +82,6 @@ class MemHive:
         self._workers.clear()
         self._mem.close()
 
-
     def _make_code(self, *, setup, main):
         hive_id = repr(id(self._mem))
         sys_path = repr(sys.path)
@@ -125,6 +124,10 @@ class MemHive:
                 __main(__sub)
             except __core.ClosedQueueError:
                 pass
+            except Exception as ex:
+                # import traceback
+                # traceback.print_exception(ex)
+                raise
             finally:
                 __sub.close()
                 del __sub

@@ -332,7 +332,7 @@ MemQueue_Destroy(MemQueue *queue)
         struct queue *q = &queue->queues[i];
         while (q->first != NULL) {
             struct item *next = q->first->next;
-            PyMem_Free(q->first);
+            PyMem_RawFree(q->first);
             q->first = next;
         }
     }
