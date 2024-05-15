@@ -38,6 +38,8 @@ typedef struct {
 
     PyTypeObject *MemQueueResponseType;
 
+    PyTypeObject *MemQueueMessageType;
+
     struct ProxyDescriptor *proxy_desc_template;
 
 #ifdef DEBUG

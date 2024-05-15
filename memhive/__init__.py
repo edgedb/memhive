@@ -70,8 +70,11 @@ class Executor:
                 while True:
                     mem.process_refs()
 
-                    p, resp = mem.listen()
-                    print('SUB LISTEN', p)
+                    x = mem.listen()
+                    print('SUB LISTEN', x)
+
+                    _, p, resp = x
+
                     mem.process_refs()
 
                     idx, func_name, func_code, args = p

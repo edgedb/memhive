@@ -132,16 +132,12 @@ memhive_sub_py_listen(MemHiveSub *o, PyObject *args)
         goto err;
     }
 
-    ret = PyTuple_New(2);
+    ret = MemQueueMessage_New(state, event, payload, resp);
     if (ret == NULL) {
         goto err;
     }
-    if (PyTuple_SetItem(ret, 0, payload)) {
-        goto err;
-    }
-    if (PyTuple_SetItem(ret, 1, resp)) {
-        goto err;
-    }
+    Py_CLEAR(payload);
+    Py_CLEAR(resp);
 
     return ret;
 
@@ -150,6 +146,23 @@ err:
     Py_XDECREF(resp);
     Py_XDECREF(ret);
     return NULL;
+}
+
+static PyObject *
+memhive_sub_py_request(MemHiveSub *o, PyObject *arg)
+{
+    if (memhive_ensure_open(o)) {
+        return NULL;
+    }
+    MemQueue *q = &((MemHive *)o->hive)->for_main;
+    #ifdef DEBUG
+    module_state *state = MemHive_GetModuleStateByObj((PyObject*)o);
+    #endif
+    TRACK(state, arg);
+    if (MemQueue_Request(q, 0, (PyObject*)o, arg)) {
+        return NULL;
+    }
+    Py_RETURN_NONE;
 }
 
 
@@ -180,6 +193,7 @@ memhive_sub_py_close(MemHiveSub *o, PyObject *args)
 }
 
 static PyMethodDef MemHiveSub_methods[] = {
+    {"request", (PyCFunction)memhive_sub_py_request, METH_O, NULL},
     {"listen", (PyCFunction)memhive_sub_py_listen, METH_NOARGS, NULL},
     {"process_refs", (PyCFunction)memhive_sub_py_do_refs, METH_NOARGS, NULL},
     {"close", (PyCFunction)memhive_sub_py_close, METH_NOARGS, NULL},

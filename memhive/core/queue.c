@@ -461,3 +461,50 @@ PyType_Spec MemQueueResponse_TypeSpec = {
     .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
     .slots = MemQueueResponse_TypeSlots,
 };
+
+
+////////////////////////////////////////////////////////////////////////////////
+
+
+static PyStructSequence_Field QueueMessage_Fields[] = {
+    {"kind", "message kind"},
+    {"payload", "message payload"},
+    {"reply", "optional callback to send the response"},
+    {0}
+};
+
+PyStructSequence_Desc QueueMessage_Desc = {
+    "memhive.core.QueueMessage",    /* name */
+    "returned from listen() calls", /* doc */
+    QueueMessage_Fields,            /* fields */
+    3,                              /* n_in_sequence */
+};
+
+PyObject *
+MemQueueMessage_New(module_state *state,
+                    memqueue_event_t kind, PyObject *payload, PyObject *reply)
+{
+    PyObject *ret = PyStructSequence_New(state->MemQueueMessageType);
+    if (ret == NULL) {
+        return NULL;
+    }
+
+    PyObject *kind_o = PyLong_FromLong(kind);
+    if (kind_o == NULL) {
+        Py_DECREF(ret);
+        return NULL;
+    }
+    PyStructSequence_SetItem(ret, 0, kind_o);
+
+    Py_INCREF(payload);
+    PyStructSequence_SetItem(ret, 1, payload);
+
+    if (reply != NULL) {
+        Py_INCREF(reply);
+        PyStructSequence_SetItem(ret, 2, reply);
+    } else {
+        PyStructSequence_SetItem(ret, 2, Py_None);
+    }
+
+    return ret;
+}

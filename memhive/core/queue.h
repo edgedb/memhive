@@ -35,6 +35,7 @@ typedef struct {
 } MemQueueResponse;
 
 extern PyType_Spec MemQueueResponse_TypeSpec;
+extern PyStructSequence_Desc QueueMessage_Desc;
 
 ssize_t
 MemQueue_AddChannel(MemQueue *queue);
@@ -67,6 +68,10 @@ MemQueueResponse_New(module_state *state,
                      PyObject *owner, memqueue_direction_t dir,
                      ssize_t channel,
                      memqueue_event_t kind);
+
+PyObject *
+MemQueueMessage_New(module_state *state,
+                    memqueue_event_t kind, PyObject *payload, PyObject *reply);
 
 
 #endif
