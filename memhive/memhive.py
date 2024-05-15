@@ -1,4 +1,5 @@
 import marshal
+import os
 import sys
 import textwrap
 import threading
@@ -14,6 +15,7 @@ class MemHive:
         self._mem = core.MemHive()
         self._workers = []
         self._closed = False
+        self._wait_add_worker = os.pipe()
 
     def _ensure_active(self):
         if self._closed:
@@ -31,9 +33,7 @@ class MemHive:
         self._ensure_active()
         self._mem[key] = val
 
-    def add_worker(self, func):
-        # XXX: add_worker is racy and returns *before* the MemHiveSub
-        # object is constructed. That shouldn't be the case.
+    def add_worker(self, *, setup=None, main=None):
         def runner(code):
             sub = subint.create(isolated=True)
             try:
@@ -46,9 +46,10 @@ class MemHive:
                 subint.destroy(sub)
 
         self._ensure_active()
-        code = _make_code(self, func)
+        code = self._make_code(setup=setup, main=main)
         worker_thread = threading.Thread(target=runner, args=(code,))
         worker_thread.start()
+        os.read(self._wait_add_worker[0], 1)
         self._workers.append(worker_thread)
 
     def broadcast(self, message):
@@ -82,32 +83,49 @@ class MemHive:
         self._mem.close()
 
 
-def _make_code(memhive, func):
-    hive_id = repr(id(memhive._mem))
-    sys_path = repr(sys.path)
-    func_name = repr(func.__name__)
-    func_code = repr(marshal.dumps(func.__code__))
+    def _make_code(self, *, setup, main):
+        hive_id = repr(id(self._mem))
+        sys_path = repr(sys.path)
 
-    return textwrap.dedent(f'''\
-        import marshal as __marshal
-        import sys as __sys
-        import types as __types
+        has_setup = repr(False)
+        if setup:
+            has_setup = repr(True)
+            setup_name = repr(setup.__name__)
+            setup_code = repr(marshal.dumps(setup.__code__))
+        else:
+            setup_name = repr(None)
+            setup_code = repr(None)
 
-        import memhive.core as __core
+        main_name = repr(main.__name__)
+        main_code = repr(marshal.dumps(main.__code__))
 
-        __func = __types.FunctionType(
-            __marshal.loads({func_code}), globals(), {func_name}
-        )
+        return textwrap.dedent(f'''\
+            import marshal as __marshal
+            import os as __os
+            import sys as __sys
+            import types as __types
 
-        __sys.path = {sys_path}
-        __sub = None
-        try:
+            import memhive.core as __core
+
+            if {has_setup}:
+                __setup = __types.FunctionType(
+                    __marshal.loads({setup_code}), globals(), {setup_name}
+                )
+
+            __main = __types.FunctionType(
+                __marshal.loads({main_code}), globals(), {main_name}
+            )
+
+            __sys.path = {sys_path}
             __sub = __core.MemHiveSub({hive_id})
-            __func(__sub)
-        except __core.ClosedQueueError:
-            pass
-        finally:
-            if __sub:
+            try:
+                if {has_setup}:
+                    __setup(__sub)
+                __os.write({self._wait_add_worker[1]}, b'1')
+                __main(__sub)
+            except __core.ClosedQueueError:
+                pass
+            finally:
                 __sub.close()
                 del __sub
-    ''')
+        ''')
