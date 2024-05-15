@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import threading
 
 from . import memhive
@@ -30,6 +31,15 @@ class AsyncMemHive:
 
     def add_worker(self, **kwargs):
         self._hive.add_worker(**kwargs)
+
+    def add_async_worker(self, *, setup=None, main):
+        def new_main(sub, main_code=main.__code__, main_name=main.__name__):
+            import asyncio
+            import types
+            main = types.FunctionType(main_code, globals(), main_name)
+            asyncio.run(main(sub))
+
+        self.add_worker(setup=setup, main=new_main)
 
     def push(self, *args):
         self._hive.push(*args)

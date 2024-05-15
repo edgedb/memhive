@@ -97,6 +97,7 @@ class MemHive:
 
         main_name = repr(main.__name__)
         main_code = repr(marshal.dumps(main.__code__))
+        main_defs = repr(marshal.dumps(main.__defaults__))
 
         return textwrap.dedent(f'''\
             import marshal as __marshal
@@ -112,7 +113,10 @@ class MemHive:
                 )
 
             __main = __types.FunctionType(
-                __marshal.loads({main_code}), globals(), {main_name}
+                __marshal.loads({main_code}),
+                globals(),
+                {main_name},
+                __marshal.loads({main_defs})
             )
 
             __sys.path = {sys_path}
