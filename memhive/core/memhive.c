@@ -284,7 +284,7 @@ static PyMethodDef MemHive_methods[] = {
     {"get", (PyCFunction)memhive_py_get, METH_NOARGS, NULL},
     {"close_subs_intake", (PyCFunction)memhive_py_close_subs_intake, METH_NOARGS, NULL},
     {"close", (PyCFunction)memhive_py_close, METH_NOARGS, NULL},
-    {"do_refs", (PyCFunction)memhive_py_do_refs, METH_NOARGS, NULL},
+    {"process_refs", (PyCFunction)memhive_py_do_refs, METH_NOARGS, NULL},
     {NULL, NULL}
 };
 

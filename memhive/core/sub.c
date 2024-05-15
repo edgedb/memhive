@@ -98,23 +98,6 @@ memhive_sub_tp_contains(MemHiveSub *o, PyObject *key)
 }
 
 static PyObject *
-memhive_sub_py_push(MemHiveSub *o, PyObject *val)
-{
-    if (memhive_ensure_open(o)) {
-        return NULL;
-    }
-    MemQueue *q = &((MemHive *)o->hive)->for_main;
-    #ifdef DEBUG
-    module_state *state = MemHive_GetModuleStateByObj((PyObject*)o);
-    #endif
-    TRACK(state, val);
-    if (MemQueue_Push(q, 0, (PyObject*)o, val)) {
-        return NULL;
-    }
-    Py_RETURN_NONE;
-}
-
-static PyObject *
 memhive_sub_py_listen(MemHiveSub *o, PyObject *args)
 {
     if (memhive_ensure_open(o)) {
@@ -197,9 +180,8 @@ memhive_sub_py_close(MemHiveSub *o, PyObject *args)
 }
 
 static PyMethodDef MemHiveSub_methods[] = {
-    {"push", (PyCFunction)memhive_sub_py_push, METH_O, NULL},
     {"listen", (PyCFunction)memhive_sub_py_listen, METH_NOARGS, NULL},
-    {"do_refs", (PyCFunction)memhive_sub_py_do_refs, METH_NOARGS, NULL},
+    {"process_refs", (PyCFunction)memhive_sub_py_do_refs, METH_NOARGS, NULL},
     {"close", (PyCFunction)memhive_sub_py_close, METH_NOARGS, NULL},
     {NULL, NULL}
 };

@@ -61,18 +61,18 @@ class Executor:
             STOP = 0
             def dd():
                 while not STOP:
-                    mem.do_refs()
+                    mem.process_refs()
                     time.sleep(0.01)
             tt = threading.Thread(target=dd)
             tt.start()
 
             try:
                 while True:
-                    mem.do_refs()
+                    mem.process_refs()
 
                     p, resp = mem.listen()
                     print('SUB LISTEN', p)
-                    mem.do_refs()
+                    mem.process_refs()
 
                     idx, func_name, func_code, args = p
 
@@ -108,12 +108,12 @@ class Executor:
         self._workers.append(thread)
 
     def put(self, argss, func):
-        self._mem.do_refs()
+        self._mem.process_refs()
 
         self.STOP = 0
         def dd():
             while not self.STOP:
-                self._mem.do_refs()
+                self._mem.process_refs()
                 time.sleep(0.01)
         self.tt = threading.Thread(target=dd)
         self.tt.start()
@@ -130,7 +130,7 @@ class Executor:
             res[i] = None
             print(f">>>>>>>>>>>>>> tuple args 0x{id(p):x}")
             self._mem.push(p)
-            self._mem.do_refs()
+            self._mem.process_refs()
             del p
 
         return res
@@ -152,13 +152,13 @@ class Executor:
         finally:
             self.STOP = 1
             self.tt.join()
-            self._mem.do_refs()
+            self._mem.process_refs()
 
     def close(self):
-        self._mem.do_refs()
+        self._mem.process_refs()
         self._mem.close_subs_intake()
         for t in self._workers:
             t.join()
         self._workers = []
-        self._mem.do_refs()
+        self._mem.process_refs()
         self._mem.close()
