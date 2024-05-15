@@ -159,9 +159,7 @@ memhive_sub_py_request(MemHiveSub *o, PyObject *arg)
         return NULL;
     }
     MemQueue *q = &((MemHive *)o->hive)->for_main;
-    #ifdef DEBUG
     module_state *state = MemHive_GetModuleStateByObj((PyObject*)o);
-    #endif
     TRACK(state, arg);
     if (MemQueue_Request(q, state, 0, (PyObject*)o, arg)) {
         return NULL;
