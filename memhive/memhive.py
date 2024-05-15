@@ -110,6 +110,9 @@ class MemHive:
 
             import memhive.core as __core
 
+            if hasattr(__core, 'enable_object_tracking'):
+                __core.enable_object_tracking()
+
             if {has_setup}:
                 __setup = __types.FunctionType(
                     __marshal.loads({setup_code}), globals(), {setup_name}

@@ -56,6 +56,9 @@ class ListenerProxy:
 class AsyncMemHive:
 
     def __init__(self):
+        if hasattr(core, 'enable_object_tracking'):
+            core.enable_object_tracking()
+
         self._hive = memhive.MemHive()
         self._active = False
         self._listen_proxy = ListenerProxy(self._hive)
@@ -91,12 +94,7 @@ class AsyncMemHive:
                 async with AsyncMemSub(sub) as new_sub:
                     await main(new_sub)
 
-            try:
-                asyncio.run(main_wrapper())
-            except Exception as ex:
-                print('==============', ex)
-            finally:
-                print('DONE')
+            asyncio.run(main_wrapper())
 
         self.add_worker(setup=setup, main=new_main)
 
