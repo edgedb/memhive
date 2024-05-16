@@ -18,10 +18,10 @@ memhive_tp_init(MemHive *o, PyObject *args, PyObject *kwds)
         goto err;
     }
 
-    if (MemQueue_Init(&o->for_subs)) {
+    if (MemQueue_Init(&o->for_subs, MEMHIVE_MAX_WORKERS)) {
         Py_FatalError("Failed to initialize the subs intake queue");
     }
-    if (MemQueue_Init(&o->for_main)) {
+    if (MemQueue_Init(&o->for_main, 0)) {
         Py_FatalError("Failed to initialize the subs output queue");
     }
 

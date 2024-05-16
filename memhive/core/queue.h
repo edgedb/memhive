@@ -14,6 +14,7 @@ typedef struct {
 
     struct queue *queues;
     ssize_t nqueues;
+    ssize_t max_queues;
 
     struct item *reuse;
     ssize_t reuse_num;
@@ -58,7 +59,7 @@ MemQueue_Listen(MemQueue *queue, module_state *state,
                 memqueue_event_t *event, PyObject **sender, PyObject **val);
 
 int
-MemQueue_Init(MemQueue *queue);
+MemQueue_Init(MemQueue *queue, ssize_t max_side_channels);
 
 int
 MemQueue_Close(MemQueue *queue, module_state *state);

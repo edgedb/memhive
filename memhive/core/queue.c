@@ -95,7 +95,7 @@ queue_put(MemQueue *queue, struct queue *q,
 }
 
 int
-MemQueue_Init(MemQueue *o)
+MemQueue_Init(MemQueue *o, ssize_t max_side_channels)
 {
     if (pthread_mutex_init(&o->mut, NULL)) {
         Py_FatalError("Failed to initialize a mutex");
@@ -105,7 +105,9 @@ MemQueue_Init(MemQueue *o)
         Py_FatalError("Failed to initialize a condition");
     }
 
-    o->queues = PyMem_RawMalloc(sizeof (struct queue));
+    o->queues = PyMem_RawMalloc(
+        ((uint64_t)max_side_channels + 1) * (sizeof (struct queue))
+    );
     if (o->queues == NULL) {
         PyErr_NoMemory();
         return -1;
@@ -115,6 +117,7 @@ MemQueue_Init(MemQueue *o)
     o->queues[0].length = 0;
 
     o->nqueues = 1;
+    o->max_queues = max_side_channels;
 
     o->reuse = NULL;
     o->reuse_num = 0;
@@ -133,32 +136,23 @@ MemQueue_AddChannel(MemQueue *queue, module_state *state)
         return -1;
     }
 
-    struct queue *nq = PyMem_RawMalloc(
-        (size_t)(queue->nqueues + 1) * (sizeof (struct queue))
-    );
-    if (nq == NULL) {
-        PyErr_NoMemory();
-        goto err;
+    if ((queue->nqueues + 1) >= queue->max_queues) {
+        queue_unlock(queue);
+        PyErr_SetString(PyExc_RuntimeError,
+                        "max number of worker queues reached");
+        return -1;
     }
 
-    memcpy(nq, queue->queues, (size_t)queue->nqueues * (sizeof (struct queue)));
-
+    struct queue *qq = queue->queues;
     channel = queue->nqueues;
-    nq[channel].first = NULL;
-    nq[channel].last = NULL;
-    nq[channel].length = 0;
+    qq[channel].first = NULL;
+    qq[channel].last = NULL;
+    qq[channel].length = 0;
 
     queue->nqueues++;
 
-    PyMem_RawFree(queue->queues);
-    queue->queues = nq;
-
     queue_unlock(queue);
     return channel;
-
-err:
-    queue_unlock(queue);
-    return -1;
 }
 
 int

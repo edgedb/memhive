@@ -19,6 +19,11 @@
 #include "refqueue.h"
 
 
+// Upper limit on how many subinterpreters a single MemHive can
+// control. We can remove this limit later.
+#define MEMHIVE_MAX_WORKERS 255
+
+
 // Safe to use on pointers from other subinterpreters as they only
 // depend on the consistent structs layouts and constants being the
 // same everywhere, which they are.
