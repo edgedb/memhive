@@ -8,3 +8,5 @@
       (can be due to objects having cycles? need to test this.)
 - [ ] add error checks on all mutex operations
 - [ ] remote error serialization
+- [ ] add a test for pickling a mapping mutated between interpreters
+- [ ] add a torture test that starts 50 interpreters and shuts them

@@ -4147,21 +4147,42 @@ map_reduce(MapObject *self)
 
     map_iterator_init(state, &iter, self->h_root);
     do {
-        PyObject *_node;
+        PyObject *node;
         PyObject *key;
         PyObject *val;
 
-        iter_res = map_iterator_next(state, &iter, &_node, &key, &val);
+        iter_res = map_iterator_next(state, &iter, &node, &key, &val);
         if (iter_res == I_ITEM) {
-            if (PyDict_SetItem(dict, key, val) < 0) {
-                DECREF(state, dict);
-                return NULL;
+            int need_copy = (
+                state->interpreter_id != ((MapNode *)node)->interpreter_id
+            );
+
+            if (need_copy) {
+                PyObject *key_copy = COPY_OBJ(state, key);
+                if (key_copy == NULL) {
+                    goto err;
+                }
+                PyObject *val_copy = COPY_OBJ(state, val);
+                if (key_copy == NULL) {
+                    CLEAR(state, key_copy);
+                    goto err;
+                }
+                int ret = PyDict_SetItem(dict, key_copy, val_copy);
+                CLEAR(state, key_copy);
+                CLEAR(state, val_copy);
+                if (ret < 0) {
+                    goto err;
+                }
+            } else {
+                if (PyDict_SetItem(dict, key, val) < 0) {
+                    goto err;
+                }
             }
         }
     } while (iter_res != I_END);
 
     PyObject *args = PyTuple_Pack(1, dict);
-    DECREF(state, dict);
+    CLEAR(state, dict);
     TRACK(state, args);
     if (args == NULL) {
         return NULL;
@@ -4170,6 +4191,10 @@ map_reduce(MapObject *self)
     PyObject *tup = PyTuple_Pack(2, Py_TYPE(self), args);
     DECREF(state, args);
     return tup;
+
+err:
+    CLEAR(state, dict);
+    return NULL;
 }
 
 #if PY_VERSION_HEX < 0x030900A6
