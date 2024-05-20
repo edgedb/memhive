@@ -10,3 +10,9 @@
 - [ ] remote error serialization
 - [ ] add a test for pickling a mapping mutated between interpreters
 - [ ] add a torture test that starts 50 interpreters and shuts them
+- [ ] add a test for mutation api of shared objects
+- [ ] add a test that accessing a mutable object inside a tuple isn't possible;
+      ditto for map
+- [ ] api to enable uvloop.run()
+- [ ] test multiple memhives, it should be possible to nest them
+- [ ] add simple RPC API
