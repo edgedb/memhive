@@ -8,6 +8,44 @@
 #include "internal/pycore_frame.h"
 
 
+static PyObject *
+cleanup_args(PyObject *args)
+{
+    if (!PyTuple_CheckExact(args)) {
+        PyErr_Format(PyExc_TypeError,
+                        "expected a tuple for err->args");
+        return NULL;
+    }
+
+    PyObject *new = PyTuple_New(Py_SIZE(args));
+    if (new == NULL) {
+        goto err;
+    }
+
+    for (ssize_t i = 0; i < Py_SIZE(args); i++) {
+        PyObject *el = PyTuple_GetItem(args, i);
+        assert(el != NULL);
+        if (PyUnicode_Check(el)
+            || PyLong_Check(el)
+            || el == Py_None
+            || el == Py_True
+            || el == Py_False)
+        {
+            PyTuple_SetItem(new, i, el);
+            Py_INCREF(el);
+        } else {
+            PyTuple_SetItem(new, i, Py_None);
+        }
+    }
+
+    return new;
+
+err:
+    Py_XDECREF(new);
+    return NULL;
+}
+
+
 static int
 reflect_tb(PyObject *tb_list, PyObject *tb)
 {
@@ -63,6 +101,8 @@ reflect_tb(PyObject *tb_list, PyObject *tb)
 static ssize_t
 reflect_error(PyObject *err, PyObject *memo, PyObject *ret)
 {
+    int is_group = _PyBaseExceptionGroup_Check(err);
+
     PyObject *pos = PyDict_GetItemWithError(memo, err);
     if (pos == NULL) {
         if (PyErr_Occurred()) {
@@ -95,11 +135,58 @@ reflect_error(PyObject *err, PyObject *memo, PyObject *ret)
         goto err;
     }
 
+    if (is_group) {
+        PyObject *group = ((PyBaseExceptionGroupObject *)err)->excs;
+        if (group != NULL)  {
+            if (!PyTuple_CheckExact(group)) {
+                PyErr_Format(PyExc_TypeError,
+                             "expected a tuple for group->excs");
+                goto err;
+            }
+
+            PyObject *ges = PyList_New(0);
+            if (ges == NULL) {
+                goto err;
+            }
+
+            for (ssize_t i = 0; i < Py_SIZE(group); i++) {
+                PyObject *ge = PyTuple_GetItem(group, i);
+                assert(ge != NULL);
+                ssize_t er = reflect_error(ge, memo, ret);
+                if (er < 0) {
+                    goto err;
+                }
+
+                PyObject *eri = PyLong_FromSsize_t(er);
+                if (eri == NULL) {
+                    Py_DECREF(ges);
+                    goto err;
+                }
+
+                r = PyList_Append(ges, eri);
+                Py_DECREF(eri);
+
+                if (r < 0) {
+                    Py_DECREF(ges);
+                    goto err;
+                }
+            }
+
+            r = PyDict_SetItemString(ser, "excs", ges);
+            Py_CLEAR(ges);
+            if (r < 0) {
+                goto err;
+            }
+        }
+    }
+
     PyObject *args = PyException_GetArgs(err);
     if (args == NULL) {
         goto err;
     }
-    r = PyDict_SetItemString(ser, "args", args);
+    PyObject *new_args = cleanup_args(args);
+    r = PyDict_SetItemString(ser, "args", new_args);
+    Py_CLEAR(new_args);
     Py_CLEAR(args);
     if (r < 0) {
         goto err;
