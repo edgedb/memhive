@@ -16,3 +16,5 @@
 - [ ] api to enable uvloop.run()
 - [ ] test multiple memhives, it should be possible to nest them
 - [ ] add simple RPC API
+- [ ] investigate using singledispatch for proxying collections
+      and complex scalars

@@ -70,6 +70,7 @@ if platform.python_implementation() == 'CPython':
                 "memhive/core/sub.c",
                 "memhive/core/utils.c",
                 "memhive/core/map.c",
+                "memhive/core/errormech.c",
             ],
             extra_compile_args=CFLAGS,
             define_macros=define_macros,

@@ -2,6 +2,7 @@
 #include "queue.h"
 #include "map.h"
 #include "debug.h"
+#include "errormech.h"
 
 static struct PyModuleDef memhive_module;
 
@@ -12,6 +13,13 @@ static int module_exec(PyObject *m);
 static PyObject * enable_object_tracking(PyObject *arg);
 static PyObject * disable_object_tracking(PyObject *arg);
 #endif
+
+
+static PyObject *
+dump_error(PyObject *self, PyObject *err)
+{
+    return MemHive_DumpError(err);
+}
 
 
 static struct PyModuleDef_Slot module_slots[] = {
@@ -25,6 +33,7 @@ static PyMethodDef module_methods[] = {
 #ifdef DEBUG
     {"enable_object_tracking", (PyCFunction)enable_object_tracking, METH_NOARGS, NULL},
     {"disable_object_tracking", (PyCFunction)disable_object_tracking, METH_NOARGS, NULL},
+    {"dump_error", (PyCFunction)dump_error, METH_O, NULL},
 #endif
     {NULL, NULL}
 };
