@@ -21,6 +21,12 @@ dump_error(PyObject *self, PyObject *err)
     return MemHive_DumpError(err);
 }
 
+static PyObject *
+restore_error(PyObject *self, PyObject *err)
+{
+    return MemHive_RestoreError(err);
+}
+
 
 static struct PyModuleDef_Slot module_slots[] = {
     {Py_mod_exec, module_exec},
@@ -34,6 +40,7 @@ static PyMethodDef module_methods[] = {
     {"enable_object_tracking", (PyCFunction)enable_object_tracking, METH_NOARGS, NULL},
     {"disable_object_tracking", (PyCFunction)disable_object_tracking, METH_NOARGS, NULL},
     {"dump_error", (PyCFunction)dump_error, METH_O, NULL},
+    {"restore_error", (PyCFunction)restore_error, METH_O, NULL},
 #endif
     {NULL, NULL}
 };

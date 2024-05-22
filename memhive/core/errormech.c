@@ -2,10 +2,11 @@
 #include "errormech.h"
 #include "debug.h"
 
-#ifndef Py_BUILD_CORE
-    #define Py_BUILD_CORE 1
-#endif
-#include "internal/pycore_frame.h"
+#include "frameobject.h"
+// #ifndef Py_BUILD_CORE
+//     #define Py_BUILD_CORE 1
+// #endif
+// #include "internal/pycore_frame.h"
 
 
 static PyObject *
@@ -305,5 +306,186 @@ MemHive_DumpError(PyObject *err)
 err:
     Py_XDECREF(memo);
     Py_XDECREF(ret);
+    return NULL;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+
+
+int
+restore_error(PyObject *ers, ssize_t index, PyObject *memo)
+{
+    assert(PyList_CheckExact(ers));
+    assert(PyTuple_CheckExact(memo));
+
+    PyObject *ed = PyList_GET_ITEM(ers, index);
+    assert(PyDict_CheckExact(ed));
+
+    PyObject *name = PyDict_GetItemString(ed, "name");
+    if (name == NULL) {
+        return -1;
+    }
+    PyObject *args = PyDict_GetItemString(ed, "args");
+    if (name == NULL) {
+        return -1;
+    }
+    PyObject *tbs = PyDict_GetItemString(ed, "tb");
+    if (tbs == NULL) {
+        return -1;
+    }
+
+    ssize_t name_l = 0;
+    const char *name_s = PyUnicode_AsUTF8AndSize(name, &name_l);
+    if (name_s == NULL) {
+        return -1;
+    }
+
+    PyType_Slot empty_type_slots[] = {
+        {0, 0},
+    };
+
+    char qual_name[1024];
+    if (snprintf(qual_name, sizeof(qual_name),
+                 "__subinterpreter__.%s", name_s) < 0)
+    {
+        PyErr_Format(PyExc_ValueError,
+                     "could not prepend module name to error __name__");
+        return -1;
+    }
+
+    PyType_Spec MinimalMetaclass_spec = {
+        .name = qual_name,
+        .basicsize = sizeof(PyHeapTypeObject),
+        .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+        .slots = empty_type_slots,
+    };
+
+    PyObject *err_cls = PyType_FromMetaclass(
+        NULL,
+        NULL,
+        &MinimalMetaclass_spec,
+        PyExc_Exception
+    );
+
+    if (err_cls == NULL) {
+        return -1;
+    }
+
+    PyObject *err = PyObject_Call(err_cls, args, NULL);
+    Py_CLEAR(err_cls);
+    if (err == NULL) {
+        return -1;
+    }
+
+    PyThreadState *tstate = PyThreadState_Get();
+    PyTracebackObject *tb = NULL;
+    for (ssize_t i = 0; i < Py_SIZE(tbs); i++) {
+        PyObject *tl = PyList_GetItem(tbs, i);
+        assert(tl != NULL);
+        assert(PyTuple_CheckExact(tl));
+        PyCodeObject *code = PyCode_NewEmpty(
+            PyUnicode_AsUTF8AndSize( // XXX
+                PyTuple_GET_ITEM(tl, 0),
+                &name_l),
+            PyUnicode_AsUTF8AndSize( // XXX
+                PyTuple_GET_ITEM(tl, 1),
+                &name_l),
+            0
+        );
+        assert(code != NULL); /// XXX
+
+        PyFrameObject *frame = PyFrame_New(
+            tstate,
+            code,
+            PyEval_GetGlobals(),
+            0
+        );
+        assert(frame != NULL); // XXX
+
+        PyTracebackObject *tb_next = PyObject_GC_New(
+            PyTracebackObject, &PyTraceBack_Type);
+        assert(tb_next != NULL); // XXX
+
+        tb_next->tb_next = tb;
+        tb_next->tb_frame = frame;
+        tb_next->tb_lasti = 0;
+        tb_next->tb_lineno = (int)PyLong_AsLong(
+            PyTuple_GET_ITEM(tl, 2)
+        ); // XXX
+
+        tb = tb_next;
+    }
+
+    if (tb != NULL) {
+        if (PyException_SetTraceback(err, (PyObject *)tb)) {
+            return -1; // XXX
+        }
+    }
+
+    PyObject *cause = PyDict_GetItemString(ed, "cause");
+    if (cause != NULL) {
+        ssize_t p = PyLong_AsSsize_t(cause);
+        #ifdef DEBUG
+        if (p == -1) {
+            assert(PyErr_Occurred() != NULL);
+        }
+        #endif
+
+        PyObject *cause_err = PyTuple_GET_ITEM(memo, p);
+        assert(cause_err != NULL);
+        Py_INCREF(cause_err);
+        PyException_SetCause(err, cause_err);
+    }
+
+    PyObject *context = PyDict_GetItemString(ed, "context");
+    if (context != NULL) {
+        ssize_t p = PyLong_AsSsize_t(context);
+        #ifdef DEBUG
+        if (p == -1) {
+            assert(PyErr_Occurred() != NULL);
+        }
+        #endif
+
+        PyObject *ctx_err = PyTuple_GET_ITEM(memo, p);
+        assert(ctx_err != NULL);
+        Py_INCREF(ctx_err);
+        PyException_SetContext(err, ctx_err);
+    }
+
+    PyTuple_SET_ITEM(memo, index, err);
+    return 0;
+}
+
+
+PyObject *
+MemHive_RestoreError(PyObject *ers)
+{
+    if (!PyList_CheckExact(ers)) {
+        PyErr_Format(PyExc_ValueError, "expected a list");
+        return NULL;
+    }
+
+    PyObject *memo = NULL;
+
+    memo = PyTuple_New(Py_SIZE(ers));
+    if (memo == NULL) {
+        goto err;
+    }
+
+    for (ssize_t i = 0; i < Py_SIZE(ers); i++) {
+        if (restore_error(ers, i, memo) < 0) {
+            goto err;
+        }
+    }
+
+    PyObject *err = PyTuple_GET_ITEM(memo, Py_SIZE(memo) - 1);
+    assert(err != NULL);
+    Py_INCREF(err);
+    Py_XDECREF(memo);
+    return err;
+
+err:
+    Py_XDECREF(memo);
     return NULL;
 }
