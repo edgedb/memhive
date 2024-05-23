@@ -128,6 +128,7 @@ reflect_error(PyObject *err, PyObject *memo, PyObject *ret)
     }
     ERR_SET_NAME(ser, name);
 
+    PyObject *msg = NULL;
     if (is_group) {
         PyObject *group = ((PyBaseExceptionGroupObject *)err)->excs;
         if (group != NULL)  {
@@ -161,22 +162,26 @@ reflect_error(PyObject *err, PyObject *memo, PyObject *ret)
 
             ERR_SET_GROUP_EXCS(ser, ges);
         }
-    }
 
-    PyObject *msg = PyObject_Str(err);
-    if (msg == NULL) {
-        PyObject *by_err = PyErr_GetRaisedException();
-        assert(by_err != NULL);
-        // TODO: add information about the exception into the message
-        msg = PyUnicode_FromFormat(
-            "ERROR WHILE CALLING __str__ ON AN EXCEPTION IN SUB INTERPRETER: " \
-            "%S", by_err
-        );
-        Py_CLEAR(by_err);
+        msg = ((PyBaseExceptionGroupObject *)err)->msg;
+        Py_INCREF(msg);
+    } else {
+        msg = PyObject_Str(err);
         if (msg == NULL) {
-            goto err;
+            PyObject *by_err = PyErr_GetRaisedException();
+            assert(by_err != NULL);
+            // TODO: add information about the exception into the message
+            msg = PyUnicode_FromFormat(
+                "ERROR WHILE CALLING __str__ ON AN EXCEPTION IN SUB INTERPRETER: " \
+                "%S", by_err
+            );
+            Py_CLEAR(by_err);
+            if (msg == NULL) {
+                goto err;
+            }
         }
     }
+    assert(msg != NULL);
     ERR_SET_MSG(ser, msg);
 
     tb_list = PyList_New(0);
