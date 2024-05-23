@@ -42,6 +42,23 @@ new_none_tuple(ssize_t size)
     return tup;
 }
 
+static PyObject *
+list_to_tuple(PyObject *lst)
+{
+    assert(PyList_CheckExact(lst));
+    ssize_t size = Py_SIZE(lst);
+    PyObject *tup = PyTuple_New(size);
+    if (tup == NULL) {
+        return NULL;
+    }
+    for (ssize_t i = 0; i < size; i++) {
+        PyObject *el = PyList_GET_ITEM(lst, i);
+        PyTuple_SET_ITEM(tup, i, el);
+        Py_INCREF(el);
+    }
+    return tup;
+}
+
 
 static int
 reflect_tb(PyObject *tb_list, PyObject *tb)
@@ -77,6 +94,8 @@ reflect_tb(PyObject *tb_list, PyObject *tb)
     if (lineno == -1) {
         lineno = PyCode_Addr2Line(code, tt->tb_lasti);
     }
+
+    Py_CLEAR(code);
 
     PyObject *ln = PyLong_FromSsize_t(lineno);
     if (ln == NULL) {
@@ -193,16 +212,11 @@ reflect_error(PyObject *err, PyObject *memo, PyObject *ret)
         goto err;
     }
 
-    PyObject *tb_tuple = PyTuple_New(Py_SIZE(tb_list));
+    PyObject *tb_tuple = list_to_tuple(tb_list);
+    Py_CLEAR(tb_list);
     if (tb_tuple == NULL) {
         goto err;
     }
-    for (ssize_t i = 0; i < Py_SIZE(tb_list); i++) {
-        PyObject *el = PyList_GET_ITEM(tb_list, i);
-        Py_INCREF(el);
-        PyTuple_SET_ITEM(tb_tuple, i, el);
-    }
-    Py_CLEAR(tb_list);
     ERR_SET_TB(ser, tb_tuple);
 
     PyObject *cause = PyException_GetCause(err);
@@ -287,14 +301,11 @@ MemHive_DumpError(PyObject *err)
 
     Py_XDECREF(memo);
 
-    PyObject *ret_tup = PyTuple_New(Py_SIZE(ret));
-    for (ssize_t i = 0; i < Py_SIZE(ret); i++) {
-        PyObject *el = PyList_GET_ITEM(ret, i);
-        PyTuple_SET_ITEM(ret_tup, i, el);
-        Py_INCREF(el);
-    }
-
+    PyObject *ret_tup = list_to_tuple(ret);
     Py_DECREF(ret);
+    if (ret_tup == NULL) {
+        return NULL;
+    }
     return ret_tup;
 
 err:
