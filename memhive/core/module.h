@@ -39,6 +39,10 @@ typedef struct {
     PyTypeObject *MemQueueReplyCallbackType;
     PyTypeObject *MemQueueMessageType;
 
+    PyObject *exc_frames_cache;
+    PyObject *exc_types_cache;
+    PyObject *exc_empty_dict;
+
     struct ProxyDescriptor *proxy_desc_template;
 
 #ifdef DEBUG

@@ -1,50 +1,9 @@
-#include "Python.h"
 #include "errormech.h"
 #include "debug.h"
+#include "module.h"
 
+#include "Python.h"
 #include "frameobject.h"
-// #ifndef Py_BUILD_CORE
-//     #define Py_BUILD_CORE 1
-// #endif
-// #include "internal/pycore_frame.h"
-
-
-static PyObject *
-cleanup_args(PyObject *args)
-{
-    if (!PyTuple_CheckExact(args)) {
-        PyErr_Format(PyExc_TypeError,
-                        "expected a tuple for err->args");
-        return NULL;
-    }
-
-    PyObject *new = PyTuple_New(Py_SIZE(args));
-    if (new == NULL) {
-        goto err;
-    }
-
-    for (ssize_t i = 0; i < Py_SIZE(args); i++) {
-        PyObject *el = PyTuple_GetItem(args, i);
-        assert(el != NULL);
-        if (PyUnicode_Check(el)
-            || PyLong_Check(el)
-            || el == Py_None
-            || el == Py_True
-            || el == Py_False)
-        {
-            PyTuple_SetItem(new, i, el);
-            Py_INCREF(el);
-        } else {
-            PyTuple_SetItem(new, i, Py_None);
-        }
-    }
-
-    return new;
-
-err:
-    Py_XDECREF(new);
-    return NULL;
-}
 
 
 static int
@@ -145,7 +104,7 @@ reflect_error(PyObject *err, PyObject *memo, PyObject *ret)
                 goto err;
             }
 
-            PyObject *ges = PyList_New(0);
+            PyObject *ges = PyTuple_New(Py_SIZE(group));
             if (ges == NULL) {
                 goto err;
             }
@@ -164,13 +123,7 @@ reflect_error(PyObject *err, PyObject *memo, PyObject *ret)
                     goto err;
                 }
 
-                r = PyList_Append(ges, eri);
-                Py_DECREF(eri);
-
-                if (r < 0) {
-                    Py_DECREF(ges);
-                    goto err;
-                }
+                PyTuple_SET_ITEM(ges, i, eri);
             }
 
             r = PyDict_SetItemString(ser, "excs", ges);
@@ -181,14 +134,22 @@ reflect_error(PyObject *err, PyObject *memo, PyObject *ret)
         }
     }
 
-    PyObject *args = PyException_GetArgs(err);
-    if (args == NULL) {
-        goto err;
+    PyObject *msg = PyObject_Str(err);
+    if (msg == NULL) {
+        PyObject *by_err = PyErr_GetRaisedException();
+        assert(by_err != NULL);
+        // TODO: add information about the exception into the message
+        msg = PyUnicode_FromFormat(
+            "ERROR WHILE CALLING __str__ ON AN EXCEPTION IN SUB INTERPRETER: " \
+            "%S", by_err
+        );
+        Py_CLEAR(by_err);
+        if (msg == NULL) {
+            goto err;
+        }
     }
-    PyObject *new_args = cleanup_args(args);
-    r = PyDict_SetItemString(ser, "args", new_args);
-    Py_CLEAR(new_args);
-    Py_CLEAR(args);
+    r = PyDict_SetItemString(ser, "msg", msg);
+    Py_CLEAR(msg);
     if (r < 0) {
         goto err;
     }
@@ -313,107 +274,292 @@ err:
 ////////////////////////////////////////////////////////////////////////////////
 
 
-int
-restore_error(PyObject *ers, ssize_t index, PyObject *memo)
+static PyFrameObject *
+make_frame(module_state *state, RemoteObject *filename, RemoteObject *funcname)
 {
-    assert(PyList_CheckExact(ers));
+    char c_cache_key[2048];
+
+    const char *c_funcname = PyUnicode_AsUTF8((PyObject*)funcname);
+    if (c_funcname == NULL) {
+        return NULL;
+    }
+
+    const char *c_filename = PyUnicode_AsUTF8((PyObject*)filename);
+    if (c_filename == NULL) {
+        return NULL;
+    }
+
+    if (snprintf(c_cache_key, sizeof(c_cache_key),
+                 "%s:%s", c_funcname, c_filename) < 0)
+    {
+        PyErr_Format(PyExc_ValueError,
+                     "failed to compute frame cache key");
+        return NULL;
+    }
+
+    PyObject *cache_key = PyUnicode_FromString(c_cache_key);
+    if (cache_key == NULL) {
+        return NULL;
+    }
+
+    PyFrameObject *frame = (PyFrameObject *)PyDict_GetItem(
+        state->exc_frames_cache, cache_key);
+    if (frame != NULL) {
+        Py_INCREF(frame);
+        goto done;
+    }
+
+    PyCodeObject *code = PyCode_NewEmpty(c_filename, c_funcname, 0);
+    if (code == NULL) {
+        goto err;
+    }
+
+    frame = PyFrame_New(
+        PyThreadState_Get(),
+        code,
+        state->exc_empty_dict,
+        NULL
+    );
+    Py_CLEAR(code);
+    if (frame == NULL) {
+        goto err;
+    }
+
+    if (PyDict_SetItem(state->exc_frames_cache,
+                       cache_key, (PyObject*)frame) < 0)
+    {
+        goto err;
+    }
+
+done:
+    Py_DECREF(cache_key);
+    return frame;
+
+err:
+    Py_DECREF(cache_key);
+    Py_XDECREF(code);
+    Py_XDECREF(frame);
+    return NULL;
+}
+
+
+static PyTracebackObject *
+make_traceback(module_state *state,
+               RemoteObject *filename, RemoteObject *funcname,
+               RemoteObject *lineno)
+{
+    int c_lineno = (int)PyLong_AsLong((PyObject *)lineno);
+    if (c_lineno < 0) {
+        if (PyErr_Occurred() != NULL) {
+            return NULL;
+        }
+        PyErr_Format(PyExc_ValueError, "lineno cannot be negative");
+        return NULL;
+    }
+
+    PyFrameObject *frame = make_frame(state, filename, funcname);
+    if (frame == NULL) {
+        return NULL;
+    }
+
+    PyTracebackObject *tb = PyObject_GC_New(
+        PyTracebackObject, &PyTraceBack_Type);
+    if (tb == NULL) {
+        Py_DECREF(frame);
+        return NULL;
+    }
+
+    tb->tb_next = NULL;
+    tb->tb_lineno = c_lineno;
+    tb->tb_lasti = 0;
+    tb->tb_frame = frame;
+
+    return tb;
+}
+
+
+static PyObject *
+make_error_type(module_state *state, RemoteObject *name, int is_group)
+{
+    const char *c_name = PyUnicode_AsUTF8((PyObject*)name);
+    if (c_name == NULL) {
+        return NULL;
+    }
+
+    char c_qual_name[1024];
+    if (snprintf(c_qual_name, sizeof(c_qual_name),
+                 "__subinterpreter__.%s", c_name) < 0)
+    {
+        PyErr_Format(PyExc_ValueError,
+                     "could not prepend module name to error's __name__");
+        return NULL;
+    }
+
+    char c_cache_key[1024];
+    if (snprintf(c_cache_key, sizeof(c_cache_key),
+                 "%s|%d", c_qual_name, is_group) < 0)
+    {
+        PyErr_Format(PyExc_ValueError,
+                     "could not prepend module name to error's __name__");
+        return NULL;
+    }
+
+    PyObject *type = PyDict_GetItemString(state->exc_types_cache, c_cache_key);
+    if (type != NULL) {
+        Py_INCREF(type);
+        return type;
+    }
+
+    PyObject *bases = NULL;
+    if (is_group) {
+        bases = PyTuple_Pack(
+            2, PyExc_BaseExceptionGroup, PyExc_Exception);
+        if (bases == NULL) {
+            return NULL;
+        }
+    }
+
+    type = PyErr_NewException(c_qual_name, bases, NULL);
+    Py_XDECREF(bases);
+    if (type == NULL) {
+        return NULL;
+    }
+
+    if (PyDict_SetItemString(state->exc_types_cache, c_cache_key, type) < 0) {
+        Py_DECREF(type);
+        return NULL;
+    }
+
+    return type;
+}
+
+static PyObject *
+fetch_reflected_error(RemoteObject *index, PyObject *memo)
+{
+    ssize_t p = PyLong_AsSsize_t((PyObject*)index);
+    if (p < 0) {
+        if (PyErr_Occurred() != NULL) {
+            return NULL;
+        }
+        PyErr_Format(PyExc_RuntimeError, "negative error index");
+        return NULL;
+    }
+    if (p >= Py_SIZE(memo)) {
+        PyErr_Format(PyExc_RuntimeError, "out of bound error index");
+        return NULL;
+    }
+
+    PyObject *err = PyTuple_GET_ITEM(memo, p);
+    if (err == NULL) {
+        PyErr_Format(PyExc_RuntimeError,
+                     "attempting to index unreflected error");
+        return NULL;
+    }
+
+    Py_INCREF(err);
+    return err;
+}
+
+
+int
+restore_error(module_state *state,
+              RemoteObject *errors_desc, ssize_t index, PyObject *memo)
+{
+    assert(PyList_CheckExact(errors_desc));
     assert(PyTuple_CheckExact(memo));
 
-    PyObject *ed = PyList_GET_ITEM(ers, index);
-    assert(PyDict_CheckExact(ed));
+    RemoteObject *error_desc = (RemoteObject *)PyList_GetItem(
+        (PyObject*)errors_desc, index);
+    assert(PyDict_CheckExact(error_desc));
 
-    PyObject *name = PyDict_GetItemString(ed, "name");
+    RemoteObject *name = (RemoteObject *)PyDict_GetItemString(
+        (PyObject*)error_desc, "name");
     if (name == NULL) {
         return -1;
     }
-    PyObject *args = PyDict_GetItemString(ed, "args");
-    if (name == NULL) {
+
+    RemoteObject *_msg = (RemoteObject *)PyDict_GetItemString(
+        (PyObject*)error_desc, "msg");
+    if (_msg == NULL) {
         return -1;
     }
-    PyObject *tbs = PyDict_GetItemString(ed, "tb");
+    PyObject *msg = _PyUnicode_Copy((PyObject*)_msg);
+    _msg = NULL;
+
+    RemoteObject *tbs = (RemoteObject *)PyDict_GetItemString(
+        (PyObject*)error_desc, "tb");
     if (tbs == NULL) {
         return -1;
     }
+    RemoteObject *group_excs = (RemoteObject *)PyDict_GetItemString(
+        (PyObject*)error_desc, "excs");
+    int is_group = group_excs != NULL;
 
-    ssize_t name_l = 0;
-    const char *name_s = PyUnicode_AsUTF8AndSize(name, &name_l);
-    if (name_s == NULL) {
-        return -1;
-    }
-
-    PyType_Slot empty_type_slots[] = {
-        {0, 0},
-    };
-
-    char qual_name[1024];
-    if (snprintf(qual_name, sizeof(qual_name),
-                 "__subinterpreter__.%s", name_s) < 0)
-    {
-        PyErr_Format(PyExc_ValueError,
-                     "could not prepend module name to error __name__");
-        return -1;
-    }
-
-    PyType_Spec MinimalMetaclass_spec = {
-        .name = qual_name,
-        .basicsize = sizeof(PyHeapTypeObject),
-        .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
-        .slots = empty_type_slots,
-    };
-
-    PyObject *err_cls = PyType_FromMetaclass(
-        NULL,
-        NULL,
-        &MinimalMetaclass_spec,
-        PyExc_Exception
-    );
-
+    PyObject *err_cls = make_error_type(state, name, is_group);
     if (err_cls == NULL) {
         return -1;
     }
 
-    PyObject *err = PyObject_Call(err_cls, args, NULL);
-    Py_CLEAR(err_cls);
-    if (err == NULL) {
-        return -1;
+    PyObject *err = NULL;
+    if (is_group) {
+        PyObject *reflected_excs = PyTuple_New(Py_SIZE(group_excs));
+        if (reflected_excs == NULL) {
+            return -1;
+        }
+
+        for (ssize_t i = 0; i < Py_SIZE(group_excs); i++) {
+            PyObject *exc = fetch_reflected_error(
+                (RemoteObject *)PyTuple_GET_ITEM(group_excs, i),
+                memo
+            );
+            if (exc == NULL) {
+                Py_DECREF(reflected_excs);
+                return -1; // XXX
+            }
+            PyTuple_SET_ITEM(reflected_excs, i, exc);
+        }
+
+        PyObject *args = PyTuple_Pack(2, msg, reflected_excs);
+        Py_CLEAR(msg);
+        Py_CLEAR(reflected_excs);
+        if (args == NULL) {
+            return -1; // XXX
+        }
+
+        err = PyObject_CallObject(err_cls, args);
+        Py_CLEAR(args);
+        Py_CLEAR(err_cls);
+        if (err == NULL) {
+            return -1;
+        }
+    } else {
+        err = PyObject_CallOneArg(err_cls, msg);
+        Py_CLEAR(msg);
+        Py_CLEAR(err_cls);
+        if (err == NULL) {
+            return -1;
+        }
     }
 
-    PyThreadState *tstate = PyThreadState_Get();
     PyTracebackObject *tb = NULL;
     for (ssize_t i = 0; i < Py_SIZE(tbs); i++) {
-        PyObject *tl = PyList_GetItem(tbs, i);
+        PyObject *tl = PyList_GetItem((PyObject*)tbs, i);
         assert(tl != NULL);
         assert(PyTuple_CheckExact(tl));
-        PyCodeObject *code = PyCode_NewEmpty(
-            PyUnicode_AsUTF8AndSize( // XXX
-                PyTuple_GET_ITEM(tl, 0),
-                &name_l),
-            PyUnicode_AsUTF8AndSize( // XXX
-                PyTuple_GET_ITEM(tl, 1),
-                &name_l),
-            0
-        );
-        assert(code != NULL); /// XXX
 
-        PyFrameObject *frame = PyFrame_New(
-            tstate,
-            code,
-            PyEval_GetGlobals(),
-            0
+        PyTracebackObject *tb_next = make_traceback(
+            state,
+            (RemoteObject *)PyTuple_GET_ITEM(tl, 0),
+            (RemoteObject *)PyTuple_GET_ITEM(tl, 1),
+            (RemoteObject *)PyTuple_GET_ITEM(tl, 2)
         );
-        assert(frame != NULL); // XXX
 
-        PyTracebackObject *tb_next = PyObject_GC_New(
-            PyTracebackObject, &PyTraceBack_Type);
-        assert(tb_next != NULL); // XXX
+        if (tb_next == NULL) {
+            Py_CLEAR(tb);
+            return -1;
+        }
 
         tb_next->tb_next = tb;
-        tb_next->tb_frame = frame;
-        tb_next->tb_lasti = 0;
-        tb_next->tb_lineno = (int)PyLong_AsLong(
-            PyTuple_GET_ITEM(tl, 2)
-        ); // XXX
-
         tb = tb_next;
     }
 
@@ -423,34 +569,24 @@ restore_error(PyObject *ers, ssize_t index, PyObject *memo)
         }
     }
 
-    PyObject *cause = PyDict_GetItemString(ed, "cause");
-    if (cause != NULL) {
-        ssize_t p = PyLong_AsSsize_t(cause);
-        #ifdef DEBUG
-        if (p == -1) {
-            assert(PyErr_Occurred() != NULL);
+    RemoteObject *cause_index = (RemoteObject *)PyDict_GetItemString(
+        (PyObject*)error_desc, "cause");
+    if (cause_index != NULL) {
+        PyObject *cause_error = fetch_reflected_error(cause_index, memo);
+        if (cause_error == NULL) {
+            return -1; // XXX
         }
-        #endif
-
-        PyObject *cause_err = PyTuple_GET_ITEM(memo, p);
-        assert(cause_err != NULL);
-        Py_INCREF(cause_err);
-        PyException_SetCause(err, cause_err);
+        PyException_SetCause(err, cause_error);
     }
 
-    PyObject *context = PyDict_GetItemString(ed, "context");
-    if (context != NULL) {
-        ssize_t p = PyLong_AsSsize_t(context);
-        #ifdef DEBUG
-        if (p == -1) {
-            assert(PyErr_Occurred() != NULL);
+    RemoteObject *context_index = (RemoteObject *)PyDict_GetItemString(
+        (PyObject*)error_desc, "context");
+    if (context_index != NULL) {
+        PyObject *context_error = fetch_reflected_error(context_index, memo);
+        if (context_error == NULL) {
+            return -1; // XXX
         }
-        #endif
-
-        PyObject *ctx_err = PyTuple_GET_ITEM(memo, p);
-        assert(ctx_err != NULL);
-        Py_INCREF(ctx_err);
-        PyException_SetContext(err, ctx_err);
+        PyException_SetContext(err, context_error);
     }
 
     PyTuple_SET_ITEM(memo, index, err);
@@ -459,22 +595,22 @@ restore_error(PyObject *ers, ssize_t index, PyObject *memo)
 
 
 PyObject *
-MemHive_RestoreError(PyObject *ers)
+MemHive_RestoreError(module_state *state, RemoteObject *errors_desc)
 {
-    if (!PyList_CheckExact(ers)) {
+    if (!PyList_CheckExact(errors_desc)) {
         PyErr_Format(PyExc_ValueError, "expected a list");
         return NULL;
     }
 
     PyObject *memo = NULL;
 
-    memo = PyTuple_New(Py_SIZE(ers));
+    memo = PyTuple_New(Py_SIZE(errors_desc));
     if (memo == NULL) {
         goto err;
     }
 
-    for (ssize_t i = 0; i < Py_SIZE(ers); i++) {
-        if (restore_error(ers, i, memo) < 0) {
+    for (ssize_t i = 0; i < Py_SIZE(errors_desc); i++) {
+        if (restore_error(state, errors_desc, i, memo) < 0) {
             goto err;
         }
     }
@@ -482,7 +618,7 @@ MemHive_RestoreError(PyObject *ers)
     PyObject *err = PyTuple_GET_ITEM(memo, Py_SIZE(memo) - 1);
     assert(err != NULL);
     Py_INCREF(err);
-    Py_XDECREF(memo);
+    Py_DECREF(memo);
     return err;
 
 err:

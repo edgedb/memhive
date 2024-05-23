@@ -24,7 +24,8 @@ dump_error(PyObject *self, PyObject *err)
 static PyObject *
 restore_error(PyObject *self, PyObject *err)
 {
-    return MemHive_RestoreError(err);
+    module_state *state = MemHive_GetModuleState(self);
+    return MemHive_RestoreError(state, (RemoteObject*)err);
 }
 
 
@@ -116,6 +117,10 @@ module_clear(PyObject *mod)
 
     Py_CLEAR(state->sub);
 
+    Py_CLEAR(state->exc_empty_dict);
+    Py_CLEAR(state->exc_types_cache);
+    Py_CLEAR(state->exc_frames_cache);
+
     #ifdef DEBUG
     Py_CLEAR(state->debug_objects_ids);
     #endif
@@ -156,6 +161,10 @@ module_traverse(PyObject *mod, visitproc visit, void *arg)
     Py_VISIT(state->MemQueueMessageType);
 
     Py_VISIT(state->sub);
+
+    Py_VISIT(state->exc_empty_dict);
+    Py_VISIT(state->exc_types_cache);
+    Py_VISIT(state->exc_frames_cache);
 
     #ifdef DEBUG
     Py_VISIT(state->debug_objects_ids);
@@ -283,6 +292,19 @@ module_exec(PyObject *m)
     proxy_desc->copy_from_main_to_sub = MemHive_NewMapProxy;
     proxy_desc->copy_from_sub_to_main = MemHive_CopyMapProxy;
     state->proxy_desc_template = proxy_desc;
+
+    state->exc_empty_dict = PyDict_New();
+    if (state->exc_empty_dict == NULL) {
+        return -1;
+    }
+    state->exc_frames_cache = PyDict_New();
+    if (state->exc_frames_cache == NULL) {
+        return -1;
+    }
+    state->exc_types_cache = PyDict_New();
+    if (state->exc_types_cache == NULL) {
+        return -1;
+    }
 
     return 0;
 }
