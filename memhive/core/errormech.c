@@ -42,6 +42,7 @@ new_none_tuple(ssize_t size)
     return tup;
 }
 
+
 static PyObject *
 list_to_tuple(PyObject *lst)
 {
@@ -67,19 +68,23 @@ reflect_tb(PyObject *tb_list, PyObject *tb)
         return 0;
     }
 
+    int ret_code = 0;
+    PyObject *ser = NULL;
+    PyCodeObject *code = NULL;
+
     assert(PyTraceBack_Check(tb));
 
     PyTracebackObject *tt = (PyTracebackObject *)tb;
 
     if (reflect_tb(tb_list, (PyObject *)tt->tb_next) < 0) {
-        return -1;
+        goto err;
     }
 
-    PyCodeObject *code = PyFrame_GetCode(tt->tb_frame);
+    code = PyFrame_GetCode(tt->tb_frame);
 
-    PyObject *ser = new_none_tuple(TB_NFIELDS);
+    ser = new_none_tuple(TB_NFIELDS);
     if (ser == NULL) {
-        return -1;
+        goto err;
     }
 
     PyObject *fn = code->co_filename;
@@ -93,24 +98,31 @@ reflect_tb(PyObject *tb_list, PyObject *tb)
     ssize_t lineno = (ssize_t)tt->tb_lineno;
     if (lineno == -1) {
         lineno = PyCode_Addr2Line(code, tt->tb_lasti);
+        if (lineno < 0) {
+            goto err;
+        }
     }
 
     Py_CLEAR(code);
 
     PyObject *ln = PyLong_FromSsize_t(lineno);
     if (ln == NULL) {
-        Py_DECREF(ser);
-        return -1;
+        goto err;
     }
     TB_SET_LINENO(ser, ln);
 
     if (PyList_Append(tb_list, ser) < 0) {
-        Py_DECREF(ser);
-        return -1;
+        goto err;
     }
 
-    Py_DECREF(ser);
-    return 0;
+    goto done;
+
+err:
+    ret_code = -1;
+done:
+    Py_XDECREF(ser);
+    Py_XDECREF(code);
+    return ret_code;
 }
 
 
@@ -125,19 +137,13 @@ reflect_error(PyObject *err, PyObject *memo, PyObject *ret)
             return -1;
         }
     } else {
-        ssize_t p = PyLong_AsSsize_t(pos);
-        #ifdef DEBUG
-        if (p == -1) {
-            assert(PyErr_Occurred() != NULL);
-        }
-        #endif
-        return p;
+        return PyLong_AsSsize_t(pos);
     }
 
     PyObject *tb_list = NULL;
 
-    PyObject *ser = new_none_tuple(ERR_NFIELDS);
-    if (ser == NULL) {
+    PyObject *reflected_error = new_none_tuple(ERR_NFIELDS);
+    if (reflected_error == NULL) {
         return -1;
     }
 
@@ -145,7 +151,7 @@ reflect_error(PyObject *err, PyObject *memo, PyObject *ret)
     if (name == NULL) {
         goto err;
     }
-    ERR_SET_NAME(ser, name);
+    ERR_SET_NAME(reflected_error, name);
 
     PyObject *msg = NULL;
     if (is_group) {
@@ -157,29 +163,28 @@ reflect_error(PyObject *err, PyObject *memo, PyObject *ret)
                 goto err;
             }
 
-            PyObject *ges = PyTuple_New(Py_SIZE(group));
-            if (ges == NULL) {
+            PyObject *reflected_group = PyTuple_New(Py_SIZE(group));
+            if (reflected_group == NULL) {
                 goto err;
             }
 
             for (ssize_t i = 0; i < Py_SIZE(group); i++) {
-                PyObject *ge = PyTuple_GetItem(group, i);
-                assert(ge != NULL);
-                ssize_t er = reflect_error(ge, memo, ret);
+                PyObject *groupped_error = PyTuple_GetItem(group, i);
+                assert(groupped_error != NULL);
+                ssize_t er = reflect_error(groupped_error, memo, ret);
                 if (er < 0) {
                     goto err;
                 }
 
                 PyObject *eri = PyLong_FromSsize_t(er);
                 if (eri == NULL) {
-                    Py_DECREF(ges);
+                    Py_DECREF(reflected_group);
                     goto err;
                 }
-
-                PyTuple_SET_ITEM(ges, i, eri);
+                PyTuple_SET_ITEM(reflected_group, i, eri);
             }
 
-            ERR_SET_GROUP_EXCS(ser, ges);
+            ERR_SET_GROUP_EXCS(reflected_error, reflected_group);
         }
 
         msg = ((PyBaseExceptionGroupObject *)err)->msg;
@@ -201,7 +206,7 @@ reflect_error(PyObject *err, PyObject *memo, PyObject *ret)
         }
     }
     assert(msg != NULL);
-    ERR_SET_MSG(ser, msg);
+    ERR_SET_MSG(reflected_error, msg);
 
     tb_list = PyList_New(0);
     if (tb_list == NULL) {
@@ -217,7 +222,7 @@ reflect_error(PyObject *err, PyObject *memo, PyObject *ret)
     if (tb_tuple == NULL) {
         goto err;
     }
-    ERR_SET_TB(ser, tb_tuple);
+    ERR_SET_TB(reflected_error, tb_tuple);
 
     PyObject *cause = PyException_GetCause(err);
     if (cause != Py_None && cause != NULL && cause != err) {
@@ -230,7 +235,7 @@ reflect_error(PyObject *err, PyObject *memo, PyObject *ret)
         if (cpp < 0) {
             goto err;
         }
-        ERR_SET_CAUSE(ser, cpp);
+        ERR_SET_CAUSE(reflected_error, cpp);
     }
 
     PyObject *context = PyException_GetContext(err);
@@ -244,10 +249,10 @@ reflect_error(PyObject *err, PyObject *memo, PyObject *ret)
         if (cpp < 0) {
             goto err;
         }
-        ERR_SET_CONTEXT(ser, cpp);
+        ERR_SET_CONTEXT(reflected_error, cpp);
     }
 
-    if (PyList_Append(ret, ser) < 0) {
+    if (PyList_Append(ret, reflected_error) < 0) {
         goto err;
     }
 
@@ -268,7 +273,7 @@ reflect_error(PyObject *err, PyObject *memo, PyObject *ret)
     return p;
 
 err:
-    Py_XDECREF(ser);
+    Py_XDECREF(reflected_error);
     Py_XDECREF(tb_list);
     return -1;
 }
