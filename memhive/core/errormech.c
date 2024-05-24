@@ -181,7 +181,7 @@ list_to_tuple(PyObject *lst)
 
 
 static int
-reflect_tb(PyObject *tb_list, PyObject *tb)
+reflect_tb(PyObject *tb_list, PyTracebackObject *tb)
 {
     if (tb == NULL) {
         return 0;
@@ -193,13 +193,11 @@ reflect_tb(PyObject *tb_list, PyObject *tb)
 
     assert(PyTraceBack_Check(tb));
 
-    PyTracebackObject *tt = (PyTracebackObject *)tb;
-
-    if (reflect_tb(tb_list, (PyObject *)tt->tb_next) < 0) {
+    if (reflect_tb(tb_list, tb->tb_next) < 0) {
         goto err;
     }
 
-    code = PyFrame_GetCode(tt->tb_frame);
+    code = PyFrame_GetCode(tb->tb_frame); /* newref */
 
     ser = new_none_tuple(TB_NFIELDS);
     if (ser == NULL) {
@@ -214,9 +212,9 @@ reflect_tb(PyObject *tb_list, PyObject *tb)
     TB_SET_FUNCNAME(ser, fn);
     Py_INCREF(fn);
 
-    ssize_t lineno = (ssize_t)tt->tb_lineno;
+    ssize_t lineno = (ssize_t)tb->tb_lineno;
     if (lineno == -1) {
-        lineno = PyCode_Addr2Line(code, tt->tb_lasti);
+        lineno = PyCode_Addr2Line(code, tb->tb_lasti);
         if (lineno < 0) {
             goto err;
         }
@@ -250,7 +248,7 @@ reflect_error(PyObject *err, PyObject *memo, PyObject *ret)
 {
     int is_group = _PyBaseExceptionGroup_Check(err);
 
-    PyObject *pos = PyDict_GetItemWithError(memo, err);
+    PyObject *pos = PyDict_GetItemWithError(memo, err); /* borrow */
     if (pos == NULL) {
         if (PyErr_Occurred()) {
             return -1;
@@ -312,7 +310,7 @@ reflect_error(PyObject *err, PyObject *memo, PyObject *ret)
     } else {
         msg = PyObject_Str(err);
         if (msg == NULL) {
-            PyObject *by_err = PyErr_GetRaisedException();
+            PyObject *by_err = PyErr_GetRaisedException(); /* clears error */
             assert(by_err != NULL);
             // TODO: add information about the exception into the message
             msg = PyUnicode_FromFormat(
@@ -332,7 +330,9 @@ reflect_error(PyObject *err, PyObject *memo, PyObject *ret)
         goto err;
     }
 
-    if (reflect_tb(tb_list, PyException_GetTraceback(err)) < 0) {
+    if (reflect_tb(tb_list,
+                   (PyTracebackObject*)PyException_GetTraceback(err)) < 0)
+    {
         goto err;
     }
 
@@ -344,31 +344,41 @@ reflect_error(PyObject *err, PyObject *memo, PyObject *ret)
     ERR_SET_TB(reflected_error, tb_tuple);
 
     PyObject *cause = PyException_GetCause(err);
-    if (cause != Py_None && cause != NULL && cause != err) {
-        ssize_t cp = reflect_error(cause, memo, ret);
-        Py_DECREF(cause);
-        if (cp < 0) {
-            goto err;
+    if (cause != Py_None && cause != NULL) {
+        if (cause == err) {
+            // do nothing
+            Py_DECREF(cause);
+        } else {
+            ssize_t cp = reflect_error(cause, memo, ret);
+            Py_DECREF(cause);
+            if (cp < 0) {
+                goto err;
+            }
+            PyObject *cpp = PyLong_FromSsize_t(cp);
+            if (cpp < 0) {
+                goto err;
+            }
+            ERR_SET_CAUSE(reflected_error, cpp);
         }
-        PyObject *cpp = PyLong_FromSsize_t(cp);
-        if (cpp < 0) {
-            goto err;
-        }
-        ERR_SET_CAUSE(reflected_error, cpp);
     }
 
     PyObject *context = PyException_GetContext(err);
-    if (context != Py_None && context != NULL && context != err) {
-        ssize_t cp = reflect_error(context, memo, ret);
-        Py_DECREF(context);
-        if (cp < 0) {
-            goto err;
+    if (context != Py_None && context != NULL) {
+        if (context == err) {
+            // do nothing
+            Py_DECREF(context);
+        } else {
+            ssize_t cp = reflect_error(context, memo, ret);
+            Py_DECREF(context);
+            if (cp < 0) {
+                goto err;
+            }
+            PyObject *cpp = PyLong_FromSsize_t(cp);
+            if (cpp < 0) {
+                goto err;
+            }
+            ERR_SET_CONTEXT(reflected_error, cpp);
         }
-        PyObject *cpp = PyLong_FromSsize_t(cp);
-        if (cpp < 0) {
-            goto err;
-        }
-        ERR_SET_CONTEXT(reflected_error, cpp);
     }
 
     if (PyList_Append(ret, reflected_error) < 0) {
@@ -376,12 +386,10 @@ reflect_error(PyObject *err, PyObject *memo, PyObject *ret)
     }
 
     ssize_t p = Py_SIZE(ret) - 1;
-
     PyObject *pp = PyLong_FromSsize_t(p);
     if (pp == NULL) {
-        return -1;
+        goto err;
     }
-
     int r = PyDict_SetItem(memo, err, pp);
     Py_DECREF(pp);
     if (r < 0) {
@@ -481,12 +489,15 @@ make_frame(module_state *state, RemoteObject *filename, RemoteObject *funcname)
         goto err;
     }
 
-    // Using a semi-pricate API here, but Cython is doing the same
+    // Without this, the built-in traceback printer injects empty lines.
+    code->co_firstlineno = -1;
+
+    // Using a semi-private API here. Although Cython is doing the same
     // and seems to be OK.
     frame = PyFrame_New(
         PyThreadState_Get(),
         code,
-        state->exc_empty_dict,
+        state->exc_empty_dict, // reuse one dict as nothing should mutate it
         NULL
     );
     Py_CLEAR(code);
@@ -538,10 +549,13 @@ make_traceback(module_state *state,
         return NULL;
     }
 
+    tb->tb_frame = frame;
     tb->tb_next = NULL;
     tb->tb_lineno = c_lineno;
-    tb->tb_lasti = 0;
-    tb->tb_frame = frame;
+
+    // Needed for traceback.py to use `tb_lineno` and not try to
+    // fetch ranges from the code object.
+    tb->tb_lasti = -1;
 
     return tb;
 }
