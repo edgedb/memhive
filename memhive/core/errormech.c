@@ -422,7 +422,7 @@ MemHive_DumpError(PyObject *err)
     }
 
     ret = PyList_New(0);
-    if (ret == 0) {
+    if (ret == NULL) {
         goto err;
     }
 
