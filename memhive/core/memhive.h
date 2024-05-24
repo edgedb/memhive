@@ -44,6 +44,8 @@ typedef struct {
     RefQueue *main_refs;
     RefQueue *subs_refs;
 
+    uint64_t req_id_cnt;
+
     uint8_t closed;
 } MemHiveSub;
 
@@ -66,6 +68,8 @@ typedef struct {
 
     SubsList *subs_list;
     pthread_mutex_t subs_list_mut;
+
+    uint64_t push_id_cnt;
 } MemHive;
 
 extern PyType_Spec MemHive_TypeSpec;

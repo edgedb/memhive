@@ -9,6 +9,7 @@
 struct item {
     PyObject *val;
     PyObject *sender;
+    uint64_t id;
     struct item *next;
     memqueue_event_t kind;
 };
@@ -51,7 +52,7 @@ queue_lock(MemQueue *queue, module_state *state)
 
 static int
 queue_put(MemQueue *queue, struct queue *q,
-          PyObject *sender, memqueue_event_t kind, PyObject *val)
+          PyObject *sender, memqueue_event_t kind, uint64_t id, PyObject *val)
 {
     // The lock must be held for this operation
 
@@ -72,6 +73,7 @@ queue_put(MemQueue *queue, struct queue *q,
     Py_INCREF(val);
     i->val = val;
     i->kind = kind;
+    i->id = id;
 
     i->sender = sender;     // borrow; we don't care, the lifetime of sender is
                             // greater than of this queue
@@ -164,7 +166,7 @@ MemQueue_Broadcast(MemQueue *queue,  module_state *state,
     }
 
     for (ssize_t i = 1; i < queue->nqueues; i++) {
-        if (queue_put(queue, &queue->queues[i], sender, E_BROADCAST, msg)) {
+        if (queue_put(queue, &queue->queues[i], sender, E_BROADCAST, 0, msg)) {
             queue_unlock(queue);
             return -1;
         }
@@ -176,13 +178,13 @@ MemQueue_Broadcast(MemQueue *queue,  module_state *state,
 
 int
 MemQueue_Request(MemQueue *queue, module_state *state,
-                 ssize_t channel, PyObject *sender, PyObject *val)
+                 ssize_t channel, PyObject *sender, uint64_t id, PyObject *val)
 {
     if (queue_lock(queue, state)) {
         return -1;
     }
 
-    if (queue_put(queue, &queue->queues[channel], sender, E_REQUEST, val)) {
+    if (queue_put(queue, &queue->queues[channel], sender, E_REQUEST, id, val)) {
         queue_unlock(queue);
         return -1;
     }
@@ -194,13 +196,13 @@ MemQueue_Request(MemQueue *queue, module_state *state,
 
 int
 MemQueue_Push(MemQueue *queue, module_state *state,
-              ssize_t channel, PyObject *sender, PyObject *val)
+              ssize_t channel, PyObject *sender, uint64_t id, PyObject *val)
 {
     if (queue_lock(queue, state)) {
         return -1;
     }
 
-    if (queue_put(queue, &queue->queues[channel], sender, E_PUSH, val)) {
+    if (queue_put(queue, &queue->queues[channel], sender, E_PUSH, id, val)) {
         queue_unlock(queue);
         return -1;
     }
@@ -212,7 +214,8 @@ MemQueue_Push(MemQueue *queue, module_state *state,
 int
 MemQueue_Listen(MemQueue *queue, module_state *state,
                 ssize_t channel,
-                memqueue_event_t *event, PyObject **sender, PyObject **val)
+                memqueue_event_t *event, PyObject **sender,
+                uint64_t *id, PyObject **val)
 {
     if (queue_lock(queue, state)) {
         return -1;
@@ -256,6 +259,7 @@ MemQueue_Listen(MemQueue *queue, module_state *state,
     *event = prev_first->kind;
     *val = prev_first->val;
     *sender = prev_first->sender;
+    *id = prev_first->id;
 
     q->first = prev_first->next;
     q->length--;
@@ -343,7 +347,8 @@ PyObject *
 MemQueueReplyCallback_New(module_state *state,
                           PyObject *owner, memqueue_direction_t dir,
                           ssize_t channel,
-                          memqueue_event_t kind)
+                          memqueue_event_t kind,
+                          uint64_t id)
 {
     MemQueueReplyCallback *o = PyObject_GC_New(
         MemQueueReplyCallback, state->MemQueueReplyCallbackType);
@@ -364,6 +369,7 @@ MemQueueReplyCallback_New(module_state *state,
     o->r_kind = kind;
     o->r_used = 0;
     o->r_channel = channel;
+    o->r_id = id;
 
     PyObject_GC_Track(o);
     return (PyObject *)o;
@@ -401,7 +407,7 @@ mq_resp_tp_call(MemQueueReplyCallback *o, PyObject *args, PyObject *kwargs)
         MemHive *hive = (MemHive *)(((MemHiveSub *)o->r_owner)->hive);
         int r = MemQueue_Push(
             &hive->for_main, state, o->r_channel,
-            o->r_owner, ret);
+            o->r_owner, o->r_id, ret);
         if (r) {
             return NULL;
         }
@@ -410,7 +416,7 @@ mq_resp_tp_call(MemQueueReplyCallback *o, PyObject *args, PyObject *kwargs)
         MemHive *hive = (MemHive *)o->r_owner;
         int r = MemQueue_Request(
             &hive->for_subs, state, o->r_channel,
-            o->r_owner, ret);
+            o->r_owner, o->r_id, ret);
         if (r) {
             return NULL;
         }

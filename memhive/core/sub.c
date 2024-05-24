@@ -43,6 +43,7 @@ memhive_sub_tp_init(MemHiveSub *o, PyObject *args, PyObject *kwds)
     Py_INCREF(state->sub);
 
     o->closed = 0;
+    o->req_id_cnt = 0;
 
     TRACK(state, o);
 
@@ -111,8 +112,11 @@ memhive_sub_py_listen(MemHiveSub *o, PyObject *args)
     memqueue_event_t event;
     PyObject *sender;
     PyObject *remote_val;
+    uint64_t id;
 
-    if (MemQueue_Listen(q, state, o->channel, &event, &sender, &remote_val)) {
+    if (MemQueue_Listen(q, state, o->channel,
+                        &event, &sender, &id, &remote_val))
+    {
         return NULL;
     }
 
@@ -130,7 +134,7 @@ memhive_sub_py_listen(MemHiveSub *o, PyObject *args)
 
     if (event == E_PUSH) {
         resp = MemQueueReplyCallback_New(
-            state, (PyObject *)o, D_FROM_SUB, 0, E_PUSH);
+            state, (PyObject *)o, D_FROM_SUB, 0, E_PUSH, id);
         if (resp == NULL) {
             goto err;
         }
@@ -161,7 +165,7 @@ memhive_sub_py_request(MemHiveSub *o, PyObject *arg)
     MemQueue *q = &((MemHive *)o->hive)->for_main;
     module_state *state = MemHive_GetModuleStateByObj((PyObject*)o);
     TRACK(state, arg);
-    if (MemQueue_Request(q, state, 0, (PyObject*)o, arg)) {
+    if (MemQueue_Request(q, state, 0, (PyObject*)o, ++o->req_id_cnt, arg)) {
         return NULL;
     }
     Py_RETURN_NONE;

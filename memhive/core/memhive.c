@@ -30,6 +30,8 @@ memhive_tp_init(MemHive *o, PyObject *args, PyObject *kwds)
         Py_FatalError("Failed to initialize a mutex");
     }
 
+    o->push_id_cnt = 0;
+
     TRACK(state, o);
 
     return 0;
@@ -250,7 +252,9 @@ memhive_py_push(MemHive *o, PyObject *val)
     module_state *state = MemHive_GetModuleStateByObj((PyObject *)o);
 
     TRACK(state, val);
-    if (MemQueue_Push(&o->for_subs, state, 0, (PyObject*)o, val)) {
+    if (MemQueue_Push(&o->for_subs, state, 0, (PyObject*)o,
+                      ++o->push_id_cnt, val))
+    {
         return NULL;
     }
     Py_RETURN_NONE;
@@ -276,7 +280,11 @@ memhive_py_listen(MemHive *o, PyObject *args)
     memqueue_event_t event;
     PyObject *sender;
     PyObject *remote_val;
-    if (MemQueue_Listen(&o->for_main, state, 0, &event, &sender, &remote_val)) {
+    uint64_t id;
+
+    if (MemQueue_Listen(&o->for_main, state, 0,
+                        &event, &sender, &id, &remote_val))
+    {
         return NULL;
     }
 
@@ -297,7 +305,7 @@ memhive_py_listen(MemHive *o, PyObject *args)
 
     if (event == E_REQUEST) {
         resp = MemQueueReplyCallback_New(
-            state, (PyObject *)o, D_FROM_MAIN, sub->channel, E_REQUEST);
+            state, (PyObject *)o, D_FROM_MAIN, sub->channel, E_REQUEST, id);
         if (resp == NULL) {
             goto err;
         }
