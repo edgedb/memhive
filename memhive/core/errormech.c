@@ -644,7 +644,7 @@ fetch_reflected_error(RemoteObject *index, PyObject *memo)
 }
 
 
-int
+static int
 restore_error(module_state *state,
               RemoteObject *errors_desc, ssize_t index, PyObject *memo)
 {
