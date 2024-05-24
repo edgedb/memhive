@@ -36,7 +36,7 @@ typedef struct {
     PyTypeObject *MemHive_Type;
     PyTypeObject *MemHiveSub_Type;
 
-    PyTypeObject *MemQueueReplyCallbackType;
+    PyTypeObject *MemQueueRequestType;
     PyTypeObject *MemQueueMessageType;
 
     PyObject *exc_frames_cache;

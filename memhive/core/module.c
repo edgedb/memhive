@@ -110,7 +110,7 @@ module_clear(PyObject *mod)
     Py_CLEAR(state->MapValuesIterType);
     Py_CLEAR(state->MapItemsIterType);
 
-    Py_CLEAR(state->MemQueueReplyCallbackType);
+    Py_CLEAR(state->MemQueueRequestType);
     Py_CLEAR(state->MemQueueMessageType);
 
     Py_CLEAR(state->empty_bitmap_node);
@@ -157,7 +157,7 @@ module_traverse(PyObject *mod, visitproc visit, void *arg)
     Py_VISIT(state->MapValuesIterType);
     Py_VISIT(state->MapItemsIterType);
 
-    Py_VISIT(state->MemQueueReplyCallbackType);
+    Py_VISIT(state->MemQueueRequestType);
     Py_VISIT(state->MemQueueMessageType);
 
     Py_VISIT(state->sub);
@@ -261,8 +261,8 @@ module_exec(PyObject *m)
     CREATE_TYPE(m, state->MapValuesIterType, &MapValuesIter_TypeSpec, NULL, 0);
     CREATE_TYPE(m, state->MapItemsIterType, &MapItemsIter_TypeSpec, NULL, 0);
 
-    CREATE_TYPE(m, state->MemQueueReplyCallbackType,
-                &MemQueueReplyCallback_TypeSpec, NULL, 0);
+    CREATE_TYPE(m, state->MemQueueRequestType,
+                &MemQueueRequest_TypeSpec, NULL, 0);
 
     state->MemQueueMessageType = PyStructSequence_NewType(&QueueMessage_Desc);
     if (state->MemQueueMessageType == NULL) {

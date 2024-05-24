@@ -304,7 +304,7 @@ memhive_py_listen(MemHive *o, PyObject *args)
     }
 
     if (event == E_REQUEST) {
-        resp = MemQueueReplyCallback_New(
+        resp = MemQueueRequest_New(
             state, (PyObject *)o, D_FROM_MAIN, sub->channel, E_REQUEST, id);
         if (resp == NULL) {
             goto err;

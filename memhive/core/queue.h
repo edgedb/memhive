@@ -34,9 +34,9 @@ typedef struct {
     ssize_t r_channel;
     uint64_t r_id;
     uint8_t r_used;
-} MemQueueReplyCallback;
+} MemQueueRequest;
 
-extern PyType_Spec MemQueueReplyCallback_TypeSpec;
+extern PyType_Spec MemQueueRequest_TypeSpec;
 extern PyStructSequence_Desc QueueMessage_Desc;
 
 ssize_t
@@ -70,11 +70,11 @@ void
 MemQueue_Destroy(MemQueue *queue);
 
 PyObject *
-MemQueueReplyCallback_New(module_state *state,
-                          PyObject *owner, memqueue_direction_t dir,
-                          ssize_t channel,
-                          memqueue_event_t kind,
-                          uint64_t id);
+MemQueueRequest_New(module_state *state,
+                    PyObject *owner, memqueue_direction_t dir,
+                    ssize_t channel,
+                    memqueue_event_t kind,
+                    uint64_t id);
 
 PyObject *
 MemQueueMessage_New(module_state *state,

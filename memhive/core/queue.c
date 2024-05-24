@@ -344,14 +344,14 @@ MemQueue_Destroy(MemQueue *queue)
 
 
 PyObject *
-MemQueueReplyCallback_New(module_state *state,
-                          PyObject *owner, memqueue_direction_t dir,
-                          ssize_t channel,
-                          memqueue_event_t kind,
-                          uint64_t id)
+MemQueueRequest_New(module_state *state,
+                    PyObject *owner, memqueue_direction_t dir,
+                    ssize_t channel,
+                    memqueue_event_t kind,
+                    uint64_t id)
 {
-    MemQueueReplyCallback *o = PyObject_GC_New(
-        MemQueueReplyCallback, state->MemQueueReplyCallbackType);
+    MemQueueRequest *o = PyObject_GC_New(
+        MemQueueRequest, state->MemQueueRequestType);
     if (o == NULL) {
         return NULL;
     }
@@ -376,7 +376,7 @@ MemQueueReplyCallback_New(module_state *state,
 }
 
 static PyObject *
-mq_resp_tp_call(MemQueueReplyCallback *o, PyObject *args, PyObject *kwargs)
+mq_resp_tp_call(MemQueueRequest *o, PyObject *args, PyObject *kwargs)
 {
     module_state *state = MemHive_GetModuleStateByObj((PyObject*)o);
 
@@ -427,7 +427,7 @@ mq_resp_tp_call(MemQueueReplyCallback *o, PyObject *args, PyObject *kwargs)
 }
 
 static int
-mq_resp_tp_traverse(MemQueueReplyCallback *self, visitproc visit, void *arg)
+mq_resp_tp_traverse(MemQueueRequest *self, visitproc visit, void *arg)
 {
     Py_VISIT(Py_TYPE(self));
     Py_VISIT(self->r_owner);
@@ -435,14 +435,14 @@ mq_resp_tp_traverse(MemQueueReplyCallback *self, visitproc visit, void *arg)
 }
 
 static int
-mq_resp_tp_clear(MemQueueReplyCallback *self)
+mq_resp_tp_clear(MemQueueRequest *self)
 {
     Py_CLEAR(self->r_owner);
     return 0;
 }
 
 static void
-mq_resp_tp_dealloc(MemQueueReplyCallback *self)
+mq_resp_tp_dealloc(MemQueueRequest *self)
 {
     PyTypeObject *tp = Py_TYPE(self);
     PyObject_GC_UnTrack(self);
@@ -461,7 +461,7 @@ PyType_Slot MemQueueReplyCallback_TypeSlots[] = {
 
 PyType_Spec MemQueueReplyCallback_TypeSpec = {
     .name = QUEUE_RESPONSE_TYPENAME,
-    .basicsize = sizeof(MemQueueReplyCallback),
+    .basicsize = sizeof(MemQueueRequest),
     .itemsize = 0,
     .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
     .slots = MemQueueReplyCallback_TypeSlots,

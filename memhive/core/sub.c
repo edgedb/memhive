@@ -133,7 +133,7 @@ memhive_sub_py_listen(MemHiveSub *o, PyObject *args)
     }
 
     if (event == E_PUSH) {
-        resp = MemQueueReplyCallback_New(
+        resp = MemQueueRequest_New(
             state, (PyObject *)o, D_FROM_SUB, 0, E_PUSH, id);
         if (resp == NULL) {
             goto err;
