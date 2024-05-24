@@ -5,6 +5,125 @@
 #include "Python.h"
 #include "frameobject.h"
 
+/* This file implements error marshaling from one subinterpreter to another.
+   =========================================================================
+
+It exposes two functions:
+
+* `MemHive_DumpError` to capture the essential information
+  about exception `err` into an immutable object, comprised of tuples
+  and immutable scalar types. This transformation preserves information about:
+
+  - Exception type name (fully qualified)
+  - Exception message (by calling `str(err)`)
+  - __cause__ and __context__
+  - Tracebacks with filanames, funcnames, and line numbers
+  - For ExceptionGroup - the nested exception.
+
+  E.g., here's an example output:
+
+    (("[Errno 2] No such file or directory: 'alksdjhsijfhdskjhfsdkjhf'",
+      'FileNotFoundError',
+      None,
+      (('/Users/yury/dev/memhive/t13.py', 'zap', 13),),
+      None,
+      None),
+     ('division by zero',
+      'ZeroDivisionError',
+      None,
+      (('/Users/yury/dev/memhive/t13.py', 'zap', 8),),
+      None,
+      None),
+     ('unexpected?',
+      'ExceptionGroup',
+      (0, 1),
+      (('/Users/yury/dev/memhive/t13.py', 'zap', 15),
+       ('/Users/yury/dev/memhive/t13.py', 'bar', 21)),
+      None,
+      0),
+     ("unsupported operand type(s) for +: 'int' and 'str'",
+      'TypeError',
+      None,
+      (('/Users/yury/dev/memhive/t13.py', 'bar', 23),
+       ('/Users/yury/dev/memhive/t13.py', 'foo', 27),
+       ('/Users/yury/dev/memhive/t13.py', '<module>', 30)),
+      None,
+      2))
+
+* `MemHive_RestoreError` to re-build exception from its serialized from.
+  Here's what the above data unpacks into:
+
+    Traceback (most recent call last):
+      File "/Users/yury/dev/memhive/t13.py", line 13, in zap
+        open('alksdjhsijfhdskjhfsdkjhf', 'r')
+    __subinterpreter__.FileNotFoundError: [Errno 2] No such file or directory:
+    'alksdjhsijfhdskjhfsdkjhf'
+
+    During handling of the above exception, another exception occurred:
+
+      + Exception Group Traceback (most recent call last):
+      |   File "/Users/yury/dev/memhive/t13.py", line 21, in bar
+      |     zap()
+      |   File "/Users/yury/dev/memhive/t13.py", line 15, in zap
+      |     raise ExceptionGroup('unexpected?', [ex, err])
+      | __subinterpreter__.ExceptionGroup: unexpected? (2 sub-exceptions)
+      +-+---------------- 1 ----------------
+        | Traceback (most recent call last):
+        |   File "/Users/yury/dev/memhive/t13.py", line 13, in zap
+        |     open('alksdjhsijfhdskjhfsdkjhf', 'r')
+        | __subinterpreter__.FileNotFoundError: [Errno 2] No such file or
+        | directory: 'alksdjhsijfhdskjhfsdkjhf'
+        +---------------- 2 ----------------
+        | Traceback (most recent call last):
+        |   File "/Users/yury/dev/memhive/t13.py", line 8, in zap
+        |     1/0
+        | __subinterpreter__.ZeroDivisionError: division by zero
+        +------------------------------------
+
+    During handling of the above exception, another exception occurred:
+
+    Traceback (most recent call last):
+      File "/Users/yury/dev/memhive/t13.py", line 45, in <module>
+        raise cc.restore_error(d)
+      File "/Users/yury/dev/memhive/t13.py", line 30, in <module>
+        foo()
+      File "/Users/yury/dev/memhive/t13.py", line 27, in foo
+        bar()
+      File "/Users/yury/dev/memhive/t13.py", line 23, in bar
+        1 + '1'
+     __subinterpreter__.TypeError: unsupported operand type(s) for +: 'int'
+     and 'str'
+
+Notes:
+
+* We do not preserve actual exception types. The restored exception tree
+  consists of instances of dynamically generated subclasses of Exception.
+  Only type name is preserved.
+
+  This is because we think that the following is an anti-pattern
+  (in pseudo-code):
+
+    try:
+        subinterpreter.run('collection[key]')
+    except KeyErorr:
+        ...
+
+  While enabling this style is theoretically possible, in practice it would
+  have mediocre performance. It's more reasonable to instead raise a
+  "RemoteError" with the reflected exception set via `__cause__`. This
+  simplifies debugging and encourages to build better APIs.
+
+* We use the `PyFrame_New` API which isn't documented as public CPython API.
+  Cython uses it too, so we should be fine.
+
+* Dynamically generated error types and frame/code objects are cached in
+  the module state. See the "state->exc_*" set of fields.
+
+* Serializing errors into immutable data is important, as it allows us to
+  implement the same approach to sharing error data that we use for sharing
+  our immutable collections.
+*/
+
 
 #define ERR_NFIELDS                 6
 #define ERR_GET_MSG(tup)            ((RemoteObject *)PyTuple_GET_ITEM(tup, 0))
@@ -197,8 +316,8 @@ reflect_error(PyObject *err, PyObject *memo, PyObject *ret)
             assert(by_err != NULL);
             // TODO: add information about the exception into the message
             msg = PyUnicode_FromFormat(
-                "ERROR WHILE CALLING __str__ ON AN EXCEPTION IN SUB INTERPRETER: " \
-                "%S", by_err
+                "ERROR WHILE CALLING __str__ ON AN EXCEPTION IN " \
+                "SUB INTERPRETER: %S", by_err
             );
             Py_CLEAR(by_err);
             if (msg == NULL) {
