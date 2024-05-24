@@ -771,7 +771,7 @@ static inline uint32_t
 map_bitcount(uint32_t i)
 {
     #if (defined(__clang__) || defined(__GNUC__))
-        return __builtin_popcount(i);
+        return (uint32_t)__builtin_popcount(i);
     #else
         /* The algorithm is copied from:
         https://graphics.stanford.edu/~seander/bithacks.html
