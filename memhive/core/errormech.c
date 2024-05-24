@@ -557,6 +557,7 @@ make_traceback(module_state *state,
     // fetch ranges from the code object.
     tb->tb_lasti = -1;
 
+    PyObject_GC_Track(tb);
     return tb;
 }
 
