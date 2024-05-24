@@ -189,6 +189,7 @@ reflect_error(PyObject *err, PyObject *memo, PyObject *ret)
 
         msg = ((PyBaseExceptionGroupObject *)err)->msg;
         Py_INCREF(msg);
+        ERR_SET_MSG(reflected_error, msg);
     } else {
         msg = PyObject_Str(err);
         if (msg == NULL) {
@@ -204,9 +205,8 @@ reflect_error(PyObject *err, PyObject *memo, PyObject *ret)
                 goto err;
             }
         }
+        ERR_SET_MSG(reflected_error, msg);
     }
-    assert(msg != NULL);
-    ERR_SET_MSG(reflected_error, msg);
 
     tb_list = PyList_New(0);
     if (tb_list == NULL) {
@@ -256,8 +256,7 @@ reflect_error(PyObject *err, PyObject *memo, PyObject *ret)
         goto err;
     }
 
-    ssize_t p = Py_SIZE(ret);
-    p--;
+    ssize_t p = Py_SIZE(ret) - 1;
 
     PyObject *pp = PyLong_FromSsize_t(p);
     if (pp == NULL) {
@@ -363,6 +362,8 @@ make_frame(module_state *state, RemoteObject *filename, RemoteObject *funcname)
         goto err;
     }
 
+    // Using a semi-pricate API here, but Cython is doing the same
+    // and seems to be OK.
     frame = PyFrame_New(
         PyThreadState_Get(),
         code,
@@ -517,6 +518,10 @@ restore_error(module_state *state,
     assert(PyTuple_CheckExact(errors_desc));
     assert(PyTuple_CheckExact(memo));
 
+    PyObject *msg = NULL;
+    PyObject *err_cls = NULL;
+    PyObject *err = NULL;
+
     RemoteObject *error_desc = (RemoteObject *)PyTuple_GET_ITEM(
         (PyObject*)errors_desc, index);
     assert(PyTuple_CheckExact(error_desc));
@@ -525,7 +530,10 @@ restore_error(module_state *state,
 
     RemoteObject *_msg = ERR_GET_MSG((PyObject*)error_desc);
     assert((PyObject*)_msg != Py_None);
-    PyObject *msg = _PyUnicode_Copy((PyObject*)_msg);
+    msg = _PyUnicode_Copy((PyObject*)_msg);
+    if (msg == NULL) {
+        goto error;
+    }
     _msg = NULL;
 
     RemoteObject *tbs = ERR_GET_TB((PyObject*)error_desc);
@@ -533,16 +541,15 @@ restore_error(module_state *state,
     RemoteObject *group_excs = ERR_GET_GROUP_EXCS((PyObject*)error_desc);
     int is_group = (PyObject*)group_excs != Py_None;
 
-    PyObject *err_cls = make_error_type(state, name, is_group);
+    err_cls = make_error_type(state, name, is_group);
     if (err_cls == NULL) {
-        return -1;
+        goto error;
     }
 
-    PyObject *err = NULL;
     if (is_group) {
         PyObject *reflected_excs = PyTuple_New(Py_SIZE(group_excs));
         if (reflected_excs == NULL) {
-            return -1;
+            goto error;
         }
 
         for (ssize_t i = 0; i < Py_SIZE(group_excs); i++) {
@@ -551,8 +558,8 @@ restore_error(module_state *state,
                 memo
             );
             if (exc == NULL) {
-                Py_DECREF(reflected_excs);
-                return -1; // XXX
+                Py_CLEAR(reflected_excs);
+                goto error;
             }
             PyTuple_SET_ITEM(reflected_excs, i, exc);
         }
@@ -561,14 +568,14 @@ restore_error(module_state *state,
         Py_CLEAR(msg);
         Py_CLEAR(reflected_excs);
         if (args == NULL) {
-            return -1; // XXX
+            goto error;
         }
 
         err = PyObject_CallObject(err_cls, args);
         Py_CLEAR(args);
         Py_CLEAR(err_cls);
         if (err == NULL) {
-            return -1;
+            goto error;
         }
     } else {
         err = PyObject_CallOneArg(err_cls, msg);
@@ -594,7 +601,7 @@ restore_error(module_state *state,
 
         if (tb_next == NULL) {
             Py_CLEAR(tb);
-            return -1;
+            goto error;
         }
 
         tb_next->tb_next = tb;
@@ -602,8 +609,10 @@ restore_error(module_state *state,
     }
 
     if (tb != NULL) {
-        if (PyException_SetTraceback(err, (PyObject *)tb)) {
-            return -1; // XXX
+        int r = PyException_SetTraceback(err, (PyObject *)tb);
+        Py_CLEAR(tb);
+        if (r < 0) {
+            goto error;
         }
     }
 
@@ -611,7 +620,7 @@ restore_error(module_state *state,
     if ((PyObject*)cause_index != Py_None) {
         PyObject *cause_error = fetch_reflected_error(cause_index, memo);
         if (cause_error == NULL) {
-            return -1; // XXX
+            goto error;
         }
         PyException_SetCause(err, cause_error);
     }
@@ -620,13 +629,19 @@ restore_error(module_state *state,
     if ((PyObject*)context_index != Py_None) {
         PyObject *context_error = fetch_reflected_error(context_index, memo);
         if (context_error == NULL) {
-            return -1; // XXX
+            goto error;
         }
         PyException_SetContext(err, context_error);
     }
 
     PyTuple_SET_ITEM(memo, index, err);
     return 0;
+
+error:
+    Py_XDECREF(msg);
+    Py_XDECREF(err_cls);
+    Py_XDECREF(err);
+    return -1;
 }
 
 
@@ -639,19 +654,20 @@ MemHive_RestoreError(module_state *state, RemoteObject *errors_desc)
     }
 
     PyObject *memo = NULL;
+    ssize_t size = Py_SIZE(errors_desc);
 
-    memo = PyTuple_New(Py_SIZE(errors_desc));
+    memo = PyTuple_New(size);
     if (memo == NULL) {
         goto err;
     }
 
-    for (ssize_t i = 0; i < Py_SIZE(errors_desc); i++) {
+    for (ssize_t i = 0; i < size; i++) {
         if (restore_error(state, errors_desc, i, memo) < 0) {
             goto err;
         }
     }
 
-    PyObject *err = PyTuple_GET_ITEM(memo, Py_SIZE(memo) - 1);
+    PyObject *err = PyTuple_GET_ITEM(memo, size - 1);
     assert(err != NULL);
     Py_INCREF(err);
     Py_DECREF(memo);
