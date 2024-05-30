@@ -11,10 +11,21 @@
 - [ ] add a test for pickling a mapping mutated between interpreters
 - [ ] add a torture test that starts 50 interpreters and shuts them
 - [ ] add a test for mutation api of shared objects
-- [ ] add a test that accessing a mutable object inside a tuple isn't possible;
-      ditto for map
+- [ ] implement "Record" type - an variation of tuple, but with an
+      indirection to the underlying storage (to make proxying more
+      efficient)
 - [ ] api to enable uvloop.run()
 - [ ] test multiple memhives, it should be possible to nest them
 - [ ] add simple RPC API
 - [ ] investigate using singledispatch for proxying collections
       and complex scalars
+- [ ] renaming the default queueing system to "Hub"
+- [ ] detach it from hive/subs; pass it as an argument to workers
+- [ ] hive/subs should implement low-level threadpools to listen on
+      queues, do unblocking queue pushes, wait on locks for accessing
+      shared state
+- [ ] ensure that you can only pull after you fulfill the previous
+      pull request
+- [ ] detach mutable index from hub/sub -- pass it as an arg to workers
+- [ ] add worker should be non-blocking (for async)
+- [ ] add `await ensure_workers_started()`
