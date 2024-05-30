@@ -121,7 +121,6 @@ memhive_sub_py_listen(MemHiveSub *o, PyObject *args)
     }
 
     PyObject *ret = NULL;
-    PyObject *resp = NULL;
 
     PyObject *payload = MemHive_CopyObject(state, remote_val);
     if (payload == NULL) {
@@ -132,26 +131,44 @@ memhive_sub_py_listen(MemHiveSub *o, PyObject *args)
         goto err;
     }
 
-    if (event == E_PUSH) {
-        resp = MemQueueRequest_New(
-            state, (PyObject *)o, D_FROM_SUB, 0, E_PUSH, id);
-        if (resp == NULL) {
-            goto err;
-        }
+    switch (event) {
+        case E_PUSH:
+            ret = MemQueueRequest_New(
+                state,
+                (PyObject *)o,
+                payload,
+                D_FROM_SUB,
+                0,
+                id
+            );
+            break;
+
+        case E_BROADCAST:
+            ret = MemQueueBroadcast_New(state, payload);
+            break;
+
+        case E_REQUEST:
+            ret = MemQueueResponse_New(
+                state,
+                payload,
+                NULL,
+                id
+            );
+            break;
+
+        default:
+            Py_UNREACHABLE();
     }
 
-    ret = MemQueueMessage_New(state, event, payload, resp);
     if (ret == NULL) {
         goto err;
     }
-    Py_CLEAR(payload);
-    Py_CLEAR(resp);
 
+    Py_DECREF(payload);
     return ret;
 
 err:
     Py_XDECREF(payload);
-    Py_XDECREF(resp);
     Py_XDECREF(ret);
     return NULL;
 }

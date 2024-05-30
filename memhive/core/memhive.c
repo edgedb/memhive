@@ -290,7 +290,6 @@ memhive_py_listen(MemHive *o, PyObject *args)
 
 
     PyObject *ret = NULL;
-    PyObject *resp = NULL;
 
     PyObject *payload = MemHive_CopyObject(state, remote_val);
     if (payload == NULL) {
@@ -303,26 +302,39 @@ memhive_py_listen(MemHive *o, PyObject *args)
         goto err;
     }
 
-    if (event == E_REQUEST) {
-        resp = MemQueueRequest_New(
-            state, (PyObject *)o, D_FROM_MAIN, sub->channel, E_REQUEST, id);
-        if (resp == NULL) {
+    switch (event) {
+        case E_REQUEST:
+            ret = MemQueueRequest_New(
+                state,
+                (PyObject *)o,
+                payload,
+                D_FROM_MAIN,
+                sub->channel,
+                id
+            );
+            if (ret == NULL) {
+                goto err;
+            }
+            goto done;
+
+        case E_PUSH:
+        case E_BROADCAST:
+            PyErr_SetString(
+                PyExc_RuntimeError,
+                "unexpected event kind in listen()");
             goto err;
-        }
+
+        default:
+            Py_UNREACHABLE();
     }
 
-    ret = MemQueueMessage_New(state, event, payload, resp);
-    if (ret == NULL) {
-        goto err;
-    }
-    Py_CLEAR(payload);
-    Py_CLEAR(resp);
-
+done:
+    assert(ret != NULL);
+    Py_DECREF(payload);
     return ret;
 
 err:
     Py_XDECREF(payload);
-    Py_XDECREF(resp);
     Py_XDECREF(ret);
     return NULL;
 }

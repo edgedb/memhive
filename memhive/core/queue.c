@@ -345,9 +345,10 @@ MemQueue_Destroy(MemQueue *queue)
 
 PyObject *
 MemQueueRequest_New(module_state *state,
-                    PyObject *owner, memqueue_direction_t dir,
+                    PyObject *owner,
+                    PyObject *arg,
+                    memqueue_direction_t dir,
                     ssize_t channel,
-                    memqueue_event_t kind,
                     uint64_t id)
 {
     MemQueueRequest *o = PyObject_GC_New(
@@ -358,15 +359,17 @@ MemQueueRequest_New(module_state *state,
 
     #ifdef DEBUG
     if (!IS_LOCALLY_TRACKED(state, owner)) {
-        Py_FatalError("QueueReponse expects a local owner object");
+        Py_FatalError("Queue request expects a local owner object");
+    }
+    if (!IS_LOCALLY_TRACKED(state, arg)) {
+        Py_FatalError("Queue request expects a local arg object");
     }
     #endif
 
-    Py_INCREF(owner);
-    o->r_owner = owner;
+    o->r_owner = Py_NewRef(owner);
+    o->r_arg = Py_NewRef(arg);
 
     o->r_dir = dir;
-    o->r_kind = kind;
     o->r_used = 0;
     o->r_channel = channel;
     o->r_id = id;
@@ -376,21 +379,21 @@ MemQueueRequest_New(module_state *state,
 }
 
 static PyObject *
-mq_resp_tp_call(MemQueueRequest *o, PyObject *args, PyObject *kwargs)
+mq_req_tp_call(MemQueueRequest *o, PyObject *args, PyObject *kwargs)
 {
     module_state *state = MemHive_GetModuleStateByObj((PyObject*)o);
 
     if (o->r_used) {
         PyErr_SetString(
             PyExc_ValueError,
-            "QueueResponse object was used before");
+            "Queue request object was used before");
         return NULL;
     }
 
     if (kwargs != NULL) {
         PyErr_SetString(
             PyExc_TypeError,
-            "QueueResponse() does not support keyword arguments");
+            "Queue request does not support keyword arguments");
         return NULL;
     }
 
@@ -427,22 +430,92 @@ mq_resp_tp_call(MemQueueRequest *o, PyObject *args, PyObject *kwargs)
 }
 
 static int
-mq_resp_tp_traverse(MemQueueRequest *self, visitproc visit, void *arg)
+mq_req_tp_traverse(MemQueueRequest *self, visitproc visit, void *arg)
 {
     Py_VISIT(Py_TYPE(self));
     Py_VISIT(self->r_owner);
+    Py_VISIT(self->r_arg);
     return 0;
 }
 
 static int
-mq_resp_tp_clear(MemQueueRequest *self)
+mq_req_tp_clear(MemQueueRequest *self)
 {
     Py_CLEAR(self->r_owner);
+    Py_CLEAR(self->r_arg);
     return 0;
 }
 
 static void
-mq_resp_tp_dealloc(MemQueueRequest *self)
+mq_req_tp_dealloc(MemQueueRequest *self)
+{
+    PyTypeObject *tp = Py_TYPE(self);
+    PyObject_GC_UnTrack(self);
+    (void)mq_req_tp_clear(self);
+    Py_TYPE(self)->tp_free(self);
+    Py_DecRef((PyObject*)tp);
+}
+
+PyType_Slot MemQueueRequestMembers_TypeSlots[] = {
+    {Py_tp_dealloc, (destructor)mq_req_tp_dealloc},
+    {Py_tp_traverse, (traverseproc)mq_req_tp_traverse},
+    {Py_tp_clear, (inquiry)mq_req_tp_clear},
+    {Py_tp_call, mq_req_tp_call},
+    {0, NULL},
+};
+
+PyType_Spec MemQueueRequest_TypeSpec = {
+    .name = QUEUE_RESPONSE_TYPENAME,
+    .basicsize = sizeof(MemQueueRequest),
+    .itemsize = 0,
+    .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
+    .slots = MemQueueRequestMembers_TypeSlots,
+};
+
+
+////////////////////////////////////////////////////////////////////////////////
+
+
+PyObject *
+MemQueueResponse_New(module_state *state,
+                     PyObject *data,
+                     PyObject *error,
+                     uint64_t id)
+{
+    MemQueueResponse *o = PyObject_GC_New(
+        MemQueueResponse, state->MemQueueResponseType);
+    if (o == NULL) {
+        return NULL;
+    }
+
+    o->x_data = Py_XNewRef(data);
+    o->x_error = Py_XNewRef(error);
+    o->x_id = id;
+
+    PyObject_GC_Track(o);
+    return (PyObject *)o;
+}
+
+
+static int
+mq_resp_tp_traverse(MemQueueResponse *self, visitproc visit, void *arg)
+{
+    Py_VISIT(Py_TYPE(self));
+    Py_VISIT(self->x_data);
+    Py_VISIT(self->x_error);
+    return 0;
+}
+
+static int
+mq_resp_tp_clear(MemQueueResponse *self)
+{
+    Py_CLEAR(self->x_data);
+    Py_CLEAR(self->x_error);
+    return 0;
+}
+
+static void
+mq_resp_tp_dealloc(MemQueueResponse *self)
 {
     PyTypeObject *tp = Py_TYPE(self);
     PyObject_GC_UnTrack(self);
@@ -451,65 +524,77 @@ mq_resp_tp_dealloc(MemQueueRequest *self)
     Py_DecRef((PyObject*)tp);
 }
 
-PyType_Slot MemQueueReplyCallback_TypeSlots[] = {
+PyType_Slot MemQueueResponseMembers_TypeSlots[] = {
     {Py_tp_dealloc, (destructor)mq_resp_tp_dealloc},
     {Py_tp_traverse, (traverseproc)mq_resp_tp_traverse},
     {Py_tp_clear, (inquiry)mq_resp_tp_clear},
-    {Py_tp_call, mq_resp_tp_call},
     {0, NULL},
 };
 
-PyType_Spec MemQueueReplyCallback_TypeSpec = {
+PyType_Spec MemQueueResponse_TypeSpec = {
     .name = QUEUE_RESPONSE_TYPENAME,
-    .basicsize = sizeof(MemQueueRequest),
+    .basicsize = sizeof(MemQueueResponse),
     .itemsize = 0,
     .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
-    .slots = MemQueueReplyCallback_TypeSlots,
+    .slots = MemQueueResponseMembers_TypeSlots,
 };
 
 
 ////////////////////////////////////////////////////////////////////////////////
 
 
-static PyStructSequence_Field QueueMessage_Fields[] = {
-    {"kind", "message kind"},
-    {"payload", "message payload"},
-    {"reply", "optional callback to send the response"},
-    {0}
-};
-
-PyStructSequence_Desc QueueMessage_Desc = {
-    "memhive.core.QueueMessage",    /* name */
-    "returned from listen() calls", /* doc */
-    QueueMessage_Fields,            /* fields */
-    3,                              /* n_in_sequence */
-};
-
 PyObject *
-MemQueueMessage_New(module_state *state,
-                    memqueue_event_t kind, PyObject *payload, PyObject *reply)
+MemQueueBroadcast_New(module_state *state, PyObject *arg)
 {
-    PyObject *ret = PyStructSequence_New(state->MemQueueMessageType);
-    if (ret == NULL) {
+    MemQueueBroadcast *o = PyObject_GC_New(
+        MemQueueBroadcast, state->MemQueueBroadcastType);
+    if (o == NULL) {
         return NULL;
     }
 
-    PyObject *kind_o = PyLong_FromLong(kind);
-    if (kind_o == NULL) {
-        Py_DECREF(ret);
-        return NULL;
-    }
-    PyStructSequence_SetItem(ret, 0, kind_o);
+    o->b_arg = Py_NewRef(arg);
 
-    Py_INCREF(payload);
-    PyStructSequence_SetItem(ret, 1, payload);
-
-    if (reply != NULL) {
-        Py_INCREF(reply);
-        PyStructSequence_SetItem(ret, 2, reply);
-    } else {
-        PyStructSequence_SetItem(ret, 2, Py_None);
-    }
-
-    return ret;
+    PyObject_GC_Track(o);
+    return (PyObject *)o;
 }
+
+
+static int
+mq_broad_tp_traverse(MemQueueBroadcast *self, visitproc visit, void *arg)
+{
+    Py_VISIT(Py_TYPE(self));
+    Py_VISIT(self->b_arg);
+    return 0;
+}
+
+static int
+mq_broad_tp_clear(MemQueueBroadcast *self)
+{
+    Py_CLEAR(self->b_arg);
+    return 0;
+}
+
+static void
+mq_broad_tp_dealloc(MemQueueBroadcast *self)
+{
+    PyTypeObject *tp = Py_TYPE(self);
+    PyObject_GC_UnTrack(self);
+    (void)mq_broad_tp_clear(self);
+    Py_TYPE(self)->tp_free(self);
+    Py_DecRef((PyObject*)tp);
+}
+
+PyType_Slot MemQueueBroadcastMembers_TypeSlots[] = {
+    {Py_tp_dealloc, (destructor)mq_broad_tp_dealloc},
+    {Py_tp_traverse, (traverseproc)mq_broad_tp_traverse},
+    {Py_tp_clear, (inquiry)mq_broad_tp_clear},
+    {0, NULL},
+};
+
+PyType_Spec MemQueueBroadcast_TypeSpec = {
+    .name = QUEUE_RESPONSE_TYPENAME,
+    .basicsize = sizeof(MemQueueBroadcast),
+    .itemsize = 0,
+    .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
+    .slots = MemQueueBroadcastMembers_TypeSlots,
+};

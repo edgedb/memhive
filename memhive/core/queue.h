@@ -29,15 +29,28 @@ typedef enum {D_FROM_MAIN, D_FROM_SUB} memqueue_direction_t;
 typedef struct {
     PyObject_HEAD
     PyObject *r_owner;
+    PyObject *r_arg;
     memqueue_direction_t r_dir;
-    memqueue_event_t r_kind;
     ssize_t r_channel;
     uint64_t r_id;
     uint8_t r_used;
 } MemQueueRequest;
 
+typedef struct {
+    PyObject_HEAD
+    PyObject *x_data;
+    PyObject *x_error;
+    uint64_t x_id;
+} MemQueueResponse;
+
+typedef struct {
+    PyObject_HEAD
+    PyObject *b_arg;
+} MemQueueBroadcast;
+
+extern PyType_Spec MemQueueResponse_TypeSpec;
 extern PyType_Spec MemQueueRequest_TypeSpec;
-extern PyStructSequence_Desc QueueMessage_Desc;
+extern PyType_Spec MemQueueBroadcast_TypeSpec;
 
 ssize_t
 MemQueue_AddChannel(MemQueue *queue, module_state *state);
@@ -71,14 +84,19 @@ MemQueue_Destroy(MemQueue *queue);
 
 PyObject *
 MemQueueRequest_New(module_state *state,
-                    PyObject *owner, memqueue_direction_t dir,
+                    PyObject *owner,
+                    PyObject *arg,
+                    memqueue_direction_t dir,
                     ssize_t channel,
-                    memqueue_event_t kind,
                     uint64_t id);
 
 PyObject *
-MemQueueMessage_New(module_state *state,
-                    memqueue_event_t kind, PyObject *payload, PyObject *reply);
+MemQueueResponse_New(module_state *state,
+                     PyObject *data,
+                     PyObject *error,
+                     uint64_t id);
 
+PyObject *
+MemQueueBroadcast_New(module_state *state, PyObject *arg);
 
 #endif

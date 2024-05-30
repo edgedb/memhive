@@ -111,7 +111,8 @@ module_clear(PyObject *mod)
     Py_CLEAR(state->MapItemsIterType);
 
     Py_CLEAR(state->MemQueueRequestType);
-    Py_CLEAR(state->MemQueueMessageType);
+    Py_CLEAR(state->MemQueueResponseType);
+    Py_CLEAR(state->MemQueueBroadcastType);
 
     Py_CLEAR(state->empty_bitmap_node);
 
@@ -158,7 +159,8 @@ module_traverse(PyObject *mod, visitproc visit, void *arg)
     Py_VISIT(state->MapItemsIterType);
 
     Py_VISIT(state->MemQueueRequestType);
-    Py_VISIT(state->MemQueueMessageType);
+    Py_VISIT(state->MemQueueResponseType);
+    Py_VISIT(state->MemQueueBroadcastType);
 
     Py_VISIT(state->sub);
 
@@ -263,15 +265,10 @@ module_exec(PyObject *m)
 
     CREATE_TYPE(m, state->MemQueueRequestType,
                 &MemQueueRequest_TypeSpec, NULL, 0);
-
-    state->MemQueueMessageType = PyStructSequence_NewType(&QueueMessage_Desc);
-    if (state->MemQueueMessageType == NULL) {
-        return -1;
-    }
-    if (PyModule_AddType(m, state->MemQueueMessageType)) {
-        return -1;
-    }
-
+    CREATE_TYPE(m, state->MemQueueResponseType,
+                &MemQueueResponse_TypeSpec, NULL, 0);
+    CREATE_TYPE(m, state->MemQueueBroadcastType,
+                &MemQueueBroadcast_TypeSpec, NULL, 0);
 
     PyInterpreterState *interp = PyInterpreterState_Get();
     assert(interp != NULL);
