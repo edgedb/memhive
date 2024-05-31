@@ -312,6 +312,7 @@ memhive_py_listen_subs_health(MemHive *o, PyObject *args)
             if (MemHive_RefQueue_Dec(((MemHiveSub*)sender)->subs_refs,
                                      remote_val))
             {
+                Py_XDECREF(err);
                 return NULL;
             }
 
