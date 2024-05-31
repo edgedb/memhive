@@ -122,6 +122,10 @@ module_clear(PyObject *mod)
     Py_CLEAR(state->exc_types_cache);
     Py_CLEAR(state->exc_frames_cache);
 
+    Py_CLEAR(state->str_ERROR);
+    Py_CLEAR(state->str_START);
+    Py_CLEAR(state->str_CLOSE);
+
     #ifdef DEBUG
     Py_CLEAR(state->debug_objects_ids);
     #endif
@@ -167,6 +171,10 @@ module_traverse(PyObject *mod, visitproc visit, void *arg)
     Py_VISIT(state->exc_empty_dict);
     Py_VISIT(state->exc_types_cache);
     Py_VISIT(state->exc_frames_cache);
+
+    Py_VISIT(state->str_ERROR);
+    Py_VISIT(state->str_START);
+    Py_VISIT(state->str_CLOSE);
 
     #ifdef DEBUG
     Py_VISIT(state->debug_objects_ids);
@@ -269,6 +277,19 @@ module_exec(PyObject *m)
                 &MemQueueResponse_TypeSpec, NULL, 0);
     CREATE_TYPE(m, state->MemQueueBroadcastType,
                 &MemQueueBroadcast_TypeSpec, NULL, 0);
+
+    state->str_ERROR = PyUnicode_FromString("ERROR");
+    if (state->str_ERROR == NULL) {
+        return -1;
+    }
+    state->str_START = PyUnicode_FromString("START");
+    if (state->str_START == NULL) {
+        return -1;
+    }
+    state->str_CLOSE = PyUnicode_FromString("CLOSE");
+    if (state->str_CLOSE == NULL) {
+        return -1;
+    }
 
     PyInterpreterState *interp = PyInterpreterState_Get();
     assert(interp != NULL);

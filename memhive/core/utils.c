@@ -4,9 +4,9 @@
 
 
 PyObject *
-MemHive_CopyObject(module_state *state, DistantPyObject *o)
+MemHive_CopyObject(module_state *state, RemoteObject *ro)
 {
-    assert(o != NULL);
+    assert(ro != NULL);
 
     // This deserves an explanation: it's only safe to use immortal objects
     // created in the main subinterpreter (`interpreter_id == 0`).
@@ -25,6 +25,11 @@ MemHive_CopyObject(module_state *state, DistantPyObject *o)
     #define IS_SAFE_IMMORTAL(o) \
         (_Py_IsImmortal(o) && state->interpreter_id != 0)
     #endif
+
+    // We want to have the signature of the function to signal that
+    // the object to copy must be remote; but we have no use of that
+    // here, so just cast to PyObject*.
+    PyObject *o = (PyObject *)ro;
 
     if (o == Py_None || o == Py_True || o == Py_False || o == Py_Ellipsis) {
         // Well-known C-defined singletons are shared between
@@ -101,7 +106,7 @@ MemHive_CopyObject(module_state *state, DistantPyObject *o)
             return NULL;
         }
         for (Py_ssize_t i = 0; i < PyTuple_Size(o); i++) {
-            PyObject *el = PyTuple_GetItem(o, i);
+            RemoteObject *el = (RemoteObject*)PyTuple_GetItem(o, i);
             assert(el != NULL);
             PyObject *oo = MemHive_CopyObject(state, el);
             if (oo == NULL) {

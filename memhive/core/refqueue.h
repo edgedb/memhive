@@ -7,6 +7,7 @@
 #include "Python.h"
 
 #include "module.h"
+#include "debug.h"
 
 typedef struct {
     pthread_mutex_t mut;
@@ -24,8 +25,8 @@ typedef struct {
 } RefQueue;
 
 RefQueue *MemHive_RefQueue_New(void);
-int MemHive_RefQueue_Inc(RefQueue *queue, PyObject *obj);
-int MemHive_RefQueue_Dec(RefQueue *queue, PyObject *obj);
+int MemHive_RefQueue_Inc(RefQueue *queue, RemoteObject *obj);
+int MemHive_RefQueue_Dec(RefQueue *queue, RemoteObject *obj);
 void MemHive_RefQueue_Run(RefQueue *queue, module_state *state);
 int MemHive_RefQueue_Destroy(RefQueue *queue);
 

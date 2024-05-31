@@ -320,7 +320,8 @@ Further Reading
         } else {                                                              \
             if (_s->sub != NULL) {                                            \
                 MemHiveSub *_sub = (MemHiveSub*)_s->sub;                      \
-                if (MemHive_RefQueue_Inc(_sub->main_refs, (PyObject*)_n)) {   \
+                if (MemHive_RefQueue_Inc(_sub->main_refs,                     \
+                                         (RemoteObject*)_n)) {                \
                     Py_FatalError("Failed to remotely incref node");          \
                 }                                                             \
             } else {                                                          \
@@ -339,7 +340,8 @@ Further Reading
         } else {                                                              \
             if (_s->sub != NULL) {                                            \
                 MemHiveSub *_sub = (MemHiveSub*)_s->sub;                      \
-                if (MemHive_RefQueue_Dec(_sub->main_refs, (PyObject*)_n)) {   \
+                if (MemHive_RefQueue_Dec(_sub->main_refs,                     \
+                                         (RemoteObject*)_n)) {                \
                     Py_FatalError("Failed to remotely incref node");          \
                 }                                                             \
             } else {                                                          \
@@ -464,7 +466,7 @@ __CopyObject_Debug(module_state *state, PyObject *obj)
 {
     assert(obj != NULL);
     assert(!IS_NODE_SLOW(state, obj));
-    return MemHive_CopyObject(state, obj);
+    return MemHive_CopyObject(state, (RemoteObject*)obj);
 }
 #define COPY_OBJ(state, o) __CopyObject_Debug(state, o)
 #else

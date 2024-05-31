@@ -1,17 +1,20 @@
 #include <stdint.h>
 
 #include "memhive.h"
+#include "errormech.h"
 #include "module.h"
 #include "track.h"
 #include "queue.h"
+#include "debug.h"
 
 
 static int
 memhive_sub_tp_init(MemHiveSub *o, PyObject *args, PyObject *kwds)
 {
     uintptr_t hive_ptr;
-    // Parse the Python int object as a uintptr_t
-    if (!PyArg_ParseTuple(args, "K", &hive_ptr)) {
+    uint64_t sub_id;
+
+    if (!PyArg_ParseTuple(args, "KK", &hive_ptr, &sub_id)) {
         return -1;
     }
 
@@ -25,7 +28,9 @@ memhive_sub_tp_init(MemHiveSub *o, PyObject *args, PyObject *kwds)
         return -1;
     }
 
-    o->hive = (DistantPyObject*)hive_ptr;
+    o->sub_id = sub_id;
+
+    o->hive = (RemoteObject*)hive_ptr;
     module_state *state = MemHive_GetModuleStateByPythonType(Py_TYPE(o));
 
     ssize_t channel = MemHive_RegisterSub((MemHive*)o->hive, o, state);
@@ -34,6 +39,8 @@ memhive_sub_tp_init(MemHiveSub *o, PyObject *args, PyObject *kwds)
     }
 
     if (MemHive_RefQueue_Inc(o->main_refs, o->hive)) {
+        // Really this can only fail with NoMemory, but still
+        MemHive_UnregisterSub((MemHive*)o->hive, o);
         return -1;
     }
 
@@ -69,7 +76,7 @@ memhive_sub_tp_len(MemHiveSub *o)
     if (memhive_ensure_open(o)) {
         return -1;
     }
-    return PyObject_Length(o->hive);
+    return PyObject_Length((PyObject *)(o->hive));
 }
 
 
@@ -110,8 +117,8 @@ memhive_sub_py_listen(MemHiveSub *o, PyObject *args)
     MemQueue *q = &((MemHive *)o->hive)->for_subs;
 
     memqueue_event_t event;
-    PyObject *sender;
-    PyObject *remote_val;
+    RemoteObject *sender;
+    RemoteObject *remote_val;
     uint64_t id;
 
     if (MemQueue_Listen(q, state, o->channel,
@@ -132,7 +139,7 @@ memhive_sub_py_listen(MemHiveSub *o, PyObject *args)
     }
 
     switch (event) {
-        case E_PUSH:
+        case E_HUB_PUSH:
             ret = MemQueueRequest_New(
                 state,
                 (PyObject *)o,
@@ -143,11 +150,11 @@ memhive_sub_py_listen(MemHiveSub *o, PyObject *args)
             );
             break;
 
-        case E_BROADCAST:
+        case E_HUB_BROADCAST:
             ret = MemQueueBroadcast_New(state, payload);
             break;
 
-        case E_REQUEST:
+        case E_HUB_REQUEST:
             ret = MemQueueResponse_New(
                 state,
                 payload,
@@ -182,7 +189,7 @@ memhive_sub_py_request(MemHiveSub *o, PyObject *arg)
     MemQueue *q = &((MemHive *)o->hive)->for_main;
     module_state *state = MemHive_GetModuleStateByObj((PyObject*)o);
     TRACK(state, arg);
-    if (MemQueue_Request(q, state, 0, (PyObject*)o, ++o->req_id_cnt, arg)) {
+    if (MemQueue_HubRequest(q, state, 0, (PyObject*)o, ++o->req_id_cnt, arg)) {
         return NULL;
     }
     Py_RETURN_NONE;
@@ -216,11 +223,105 @@ memhive_sub_py_close(MemHiveSub *o, PyObject *args)
     Py_RETURN_NONE;
 }
 
+static PyObject *
+memhive_sub_py_report_start(MemHiveSub *o, PyObject *args)
+{
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)o);
+
+    int ret = MemQueue_Put(
+        &((MemHive*)o->hive)->subs_health,
+        state,
+        E_HEALTH_START,
+        0,
+        (PyObject*)o,
+        o->sub_id,
+        NULL
+    );
+
+    if (ret) {
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
+static PyObject *
+memhive_sub_py_report_close(MemHiveSub *o, PyObject *args)
+{
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)o);
+
+    int ret = MemQueue_Put(
+        &((MemHive*)o->hive)->subs_health,
+        state,
+        E_HEALTH_CLOSE,
+        0,
+        (PyObject*)o,
+        o->sub_id,
+        NULL
+    );
+
+    if (ret) {
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
+static PyObject *
+memhive_sub_py_report_error(MemHiveSub *o, PyObject *args)
+{
+    PyObject *exc_name;
+    PyObject *exc_msg;
+    PyObject *cause;
+
+    if (!PyArg_UnpackTuple(args, "report_error", 3, 3,
+                           &exc_name, &exc_msg, &cause))
+    {
+        return NULL;
+    }
+
+    PyObject * ser_err = MemHive_DumpError(cause);
+    if (ser_err == NULL) {
+        return NULL;
+    }
+
+    PyObject *res = PyTuple_Pack(3, exc_name, exc_msg, ser_err);
+    Py_CLEAR(ser_err);
+    if (res == NULL) {
+        return NULL;
+    }
+
+    module_state *state = MemHive_GetModuleStateByObj((PyObject *)o);
+
+    int ret = MemQueue_Put(
+        &((MemHive*)o->hive)->subs_health,
+        state,
+        E_HEALTH_ERROR,
+        0,
+        (PyObject*)o,
+        o->sub_id,
+        res
+    );
+    Py_CLEAR(ser_err);
+
+    if (ret) {
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
 static PyMethodDef MemHiveSub_methods[] = {
     {"request", (PyCFunction)memhive_sub_py_request, METH_O, NULL},
     {"listen", (PyCFunction)memhive_sub_py_listen, METH_NOARGS, NULL},
     {"process_refs", (PyCFunction)memhive_sub_py_do_refs, METH_NOARGS, NULL},
     {"close", (PyCFunction)memhive_sub_py_close, METH_NOARGS, NULL},
+    {"report_error", (PyCFunction)memhive_sub_py_report_error,
+        METH_VARARGS, NULL},
+    {"report_start", (PyCFunction)memhive_sub_py_report_start,
+        METH_NOARGS, NULL},
+    {"report_close", (PyCFunction)memhive_sub_py_report_close,
+        METH_NOARGS, NULL},
     {NULL, NULL}
 };
 

@@ -23,7 +23,15 @@ typedef struct {
     uint8_t destroyed;
 } MemQueue;
 
-typedef enum {E_BROADCAST, E_REQUEST, E_PUSH} memqueue_event_t;
+typedef enum {
+    E_HUB_BROADCAST,
+    E_HUB_REQUEST,
+    E_HUB_PUSH,
+    E_HEALTH_ERROR,
+    E_HEALTH_START,
+    E_HEALTH_CLOSE,
+} memqueue_event_t;
+
 typedef enum {D_FROM_MAIN, D_FROM_SUB} memqueue_direction_t;
 
 typedef struct {
@@ -56,22 +64,31 @@ ssize_t
 MemQueue_AddChannel(MemQueue *queue, module_state *state);
 
 int
-MemQueue_Broadcast(MemQueue *queue,  module_state *state,
-                   PyObject *sender, PyObject *msg);
+MemQueue_Put(MemQueue *queue,
+             module_state *state,
+             memqueue_event_t kind,
+             ssize_t channel,
+             PyObject *sender,
+             uint64_t id,
+             PyObject *val);
 
 int
-MemQueue_Push(MemQueue *queue, module_state *state,
-              ssize_t channel, PyObject *sender, uint64_t id, PyObject *val);
+MemQueue_HubBroadcast(MemQueue *queue,  module_state *state,
+                      PyObject *sender, PyObject *msg);
 
 int
-MemQueue_Request(MemQueue *queue, module_state *state,
+MemQueue_HubPush(MemQueue *queue, module_state *state,
                  ssize_t channel, PyObject *sender, uint64_t id, PyObject *val);
+
+int
+MemQueue_HubRequest(MemQueue *queue, module_state *state,
+                    ssize_t channel, PyObject *sender, uint64_t id, PyObject *val);
 
 int
 MemQueue_Listen(MemQueue *queue, module_state *state,
                 ssize_t channel,
-                memqueue_event_t *event, PyObject **sender,
-                uint64_t *id, PyObject **val);
+                memqueue_event_t *event, RemoteObject **sender,
+                uint64_t *id, RemoteObject **val);
 
 int
 MemQueue_Init(MemQueue *queue, ssize_t max_side_channels);

@@ -2,11 +2,11 @@
 #define MEMHIVE_UTILS_H
 
 #include "module.h"
+#include "debug.h"
 
 // A type alias for PyObject* pointers to objects owned by a different
 // sub-interpreter.
-typedef PyObject DistantPyObject;
 
-PyObject * MemHive_CopyObject(module_state *, DistantPyObject *);
+PyObject * MemHive_CopyObject(module_state *, RemoteObject *);
 
 #endif

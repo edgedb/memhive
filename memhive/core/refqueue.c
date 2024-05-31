@@ -5,7 +5,7 @@
 #define MAX_REUSE 100
 
 struct item {
-    PyObject *obj;
+    RemoteObject *obj;
     struct item *next;
 };
 
@@ -35,7 +35,7 @@ MemHive_RefQueue_New(void)
 }
 
 static int
-push_incdec(RefQueue *q, PyObject *obj, int is_inc)
+push_incdec(RefQueue *q, RemoteObject *obj, int is_inc)
 {
     if (pthread_mutex_trylock(&q->mut)) {
         Py_BEGIN_ALLOW_THREADS
@@ -87,13 +87,13 @@ push_incdec(RefQueue *q, PyObject *obj, int is_inc)
 }
 
 int
-MemHive_RefQueue_Inc(RefQueue *queue, PyObject *obj)
+MemHive_RefQueue_Inc(RefQueue *queue, RemoteObject *obj)
 {
     return push_incdec(queue, obj, 1);
 }
 
 int
-MemHive_RefQueue_Dec(RefQueue *queue, PyObject *obj)
+MemHive_RefQueue_Dec(RefQueue *queue, RemoteObject *obj)
 {
     return push_incdec(queue, obj, 0);
 }

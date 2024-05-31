@@ -17,6 +17,12 @@
 #include "utils.h"
 #include "queue.h"
 #include "refqueue.h"
+#include "debug.h"
+
+
+// A simple annotation to inform the reader that the decorated
+// function will be (or can be) called from another interpreter.
+#define MEMHIVE_REMOTE(type) type
 
 
 // Upper limit on how many subinterpreters a single MemHive can
@@ -38,7 +44,8 @@
 typedef struct {
     PyObject_HEAD
 
-    DistantPyObject *hive;
+    RemoteObject *hive;
+    uint64_t sub_id;
     ssize_t channel;
 
     RefQueue *main_refs;
@@ -59,10 +66,13 @@ typedef struct sl {
 typedef struct {
     PyObject_HEAD
 
+    module_state *mod_state;
+
     pthread_rwlock_t index_rwlock;
 
     PyObject *index;
 
+    MemQueue subs_health;
     MemQueue for_subs;
     MemQueue for_main;
 

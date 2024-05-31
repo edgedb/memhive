@@ -1,5 +1,5 @@
+import itertools
 import marshal
-import os
 import sys
 import textwrap
 import threading
@@ -9,29 +9,22 @@ import _xxsubinterpreters as subint
 import memhive.core as core
 
 
-class MemHive:
+class CoreMemHive(core.MemHive):
 
     def __init__(self):
-        self._mem = core.MemHive()
+        super().__init__()
+
         self._workers = []
-        self._closed = False
-        self._wait_add_worker = os.pipe()
 
-    def _ensure_active(self):
-        if self._closed:
-            raise RuntimeError('MemHive is closed')
+        # Using `itertools.count()` here as opposed to `count += 1`,
+        # as the former is thread-safe. We also don't want sub ids
+        # to start at 0 (that's reserved for the main interpreter
+        # and I'd like to avoid any possible confusion)
+        # and we don't want them to appear to be mapped to real
+        # subinterpreter IDs (they can be out of sync anyway),
+        # hence a random offset.
+        self._sub_counter = itertools.count(42).__next__
 
-    def __getitem__(self, key):
-        self._ensure_active()
-        return self._mem[key]
-
-    def __contains__(self, key):
-        self._ensure_active()
-        return key in self._mem
-
-    def __setitem__(self, key, val):
-        self._ensure_active()
-        self._mem[key] = val
 
     def add_worker(self, *, setup=None, main=None):
         def runner(code):
@@ -45,12 +38,145 @@ class MemHive:
             finally:
                 subint.destroy(sub)
 
-        self._ensure_active()
-        code = self._make_code(setup=setup, main=main)
+        sub_id = self._sub_counter()
+        code = self._make_code(setup=setup, main=main, sub_id=sub_id)
         worker_thread = threading.Thread(target=runner, args=(code,))
         worker_thread.start()
-        os.read(self._wait_add_worker[0], 1)
         self._workers.append(worker_thread)
+        return sub_id
+
+    def _make_code(self, *, setup, main, sub_id):
+        hive_id = repr(id(self))
+        sys_path = repr(sys.path)
+
+        has_setup = repr(False)
+        if setup:
+            has_setup = repr(True)
+            setup_name = repr(setup.__name__)
+            setup_code = repr(marshal.dumps(setup.__code__))
+        else:
+            setup_name = repr(None)
+            setup_code = repr(None)
+
+        main_name = repr(main.__name__)
+        main_code = repr(marshal.dumps(main.__code__))
+        main_defs = repr(marshal.dumps(main.__defaults__))
+
+        return textwrap.dedent(f'''\
+            import marshal as __marshal
+            import os as __os
+            import sys as __sys
+            import traceback as __traceback
+            import types as __types
+
+            import memhive.core as __core
+
+            if hasattr(__core, 'enable_object_tracking'):
+                __core.enable_object_tracking()
+
+            __sys.path = {sys_path}
+
+            try:
+                __sub = __core.MemHiveSub({hive_id}, {sub_id})
+            except BaseException as ex:
+                nex = RuntimeError('COULD NOT INSTANTIATE SUB')
+                nex.__cause__ = ex
+                __traceback.print_exception(nex, file=__sys.stderr)
+                raise nex
+
+            try:
+                if {has_setup}:
+                    __setup = __types.FunctionType(
+                        __marshal.loads({setup_code}), globals(), {setup_name}
+                    )
+            except Exception as ex:
+                __sub.report_error(
+                    'RuntimeError',
+                    'failed to unserialize the "setup" worker function',
+                    ex
+                )
+                __sub.close()
+                __sub = None
+
+            if __sub is not None:
+                try:
+                    __main = __types.FunctionType(
+                        __marshal.loads({main_code}),
+                        globals(),
+                        {main_name},
+                        __marshal.loads({main_defs})
+                    )
+                except Exception as ex:
+                    __sub.report_error(
+                        'RuntimeError',
+                        'failed to unserialize the "main" worker function',
+                        ex
+                    )
+                    __sub.close()
+                    __sub == None
+
+            if __sub is not None and {has_setup}:
+                try:
+                    __setup(__sub)
+                except Exception as ex:
+                    __sub.report_error(
+                        'RuntimeError',
+                        'unhandled error during the "setup" worker call',
+                        ex
+                    )
+                    __sub.close()
+                    __sub = None
+
+            if __sub is not None:
+                __sub.report_start()
+                try:
+                    __main(__sub)
+                except Exception as ex:
+                    __sub.report_error(
+                        'RuntimeError',
+                        'unhandled error during the "main" worker call',
+                        ex
+                    )
+                except __core.ClosedQueueError:
+                    __sub.report_close() # XXX do this properly
+                else:
+                    __sub.report_close()
+                finally:
+                    __sub.close()
+                    del __sub
+        ''')
+
+    def join_worker_threads(self):
+        for w in self._workers:
+            w.join()
+        self._workers.clear()
+
+
+class MemHive:
+
+    def __init__(self):
+        self._mem = CoreMemHive()
+        self._closed = False
+
+    def _ensure_active(self):
+        if self._closed:
+            raise RuntimeError('MemHive is closed')
+
+    def add_worker(self, *, setup=None, main=None):
+        self._ensure_active()
+        self._mem.add_worker(setup=setup, main=main)
+
+    def __getitem__(self, key):
+        self._ensure_active()
+        return self._mem[key]
+
+    def __contains__(self, key):
+        self._ensure_active()
+        return key in self._mem
+
+    def __setitem__(self, key, val):
+        self._ensure_active()
+        self._mem[key] = val
 
     def broadcast(self, message):
         self._ensure_active()
@@ -80,65 +206,5 @@ class MemHive:
         self._closed = True
 
         self._mem.close_subs_queue()
-        for w in self._workers:
-            w.join()
-        self._workers.clear()
+        self._mem.join_worker_threads()
         self._mem.close()
-
-    def _make_code(self, *, setup, main):
-        hive_id = repr(id(self._mem))
-        sys_path = repr(sys.path)
-
-        has_setup = repr(False)
-        if setup:
-            has_setup = repr(True)
-            setup_name = repr(setup.__name__)
-            setup_code = repr(marshal.dumps(setup.__code__))
-        else:
-            setup_name = repr(None)
-            setup_code = repr(None)
-
-        main_name = repr(main.__name__)
-        main_code = repr(marshal.dumps(main.__code__))
-        main_defs = repr(marshal.dumps(main.__defaults__))
-
-        return textwrap.dedent(f'''\
-            import marshal as __marshal
-            import os as __os
-            import sys as __sys
-            import types as __types
-
-            import memhive.core as __core
-
-            if hasattr(__core, 'enable_object_tracking'):
-                __core.enable_object_tracking()
-
-            if {has_setup}:
-                __setup = __types.FunctionType(
-                    __marshal.loads({setup_code}), globals(), {setup_name}
-                )
-
-            __main = __types.FunctionType(
-                __marshal.loads({main_code}),
-                globals(),
-                {main_name},
-                __marshal.loads({main_defs})
-            )
-
-            __sys.path = {sys_path}
-            __sub = __core.MemHiveSub({hive_id})
-            try:
-                if {has_setup}:
-                    __setup(__sub)
-                __os.write({self._wait_add_worker[1]}, b'1')
-                __main(__sub)
-            except __core.ClosedQueueError:
-                pass
-            except Exception as ex:
-                # import traceback
-                # traceback.print_exception(ex)
-                raise
-            finally:
-                __sub.close()
-                del __sub
-        ''')

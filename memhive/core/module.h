@@ -44,6 +44,10 @@ typedef struct {
     PyObject *exc_types_cache;
     PyObject *exc_empty_dict;
 
+    PyObject *str_START;
+    PyObject *str_ERROR;
+    PyObject *str_CLOSE;
+
     struct ProxyDescriptor *proxy_desc_template;
 
 #ifdef DEBUG

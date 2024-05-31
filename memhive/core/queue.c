@@ -44,7 +44,7 @@ queue_lock(MemQueue *queue, module_state *state)
     if ((queue)->closed == 1) {
         queue_unlock(queue);
         PyErr_SetString(state->ClosedQueueError,
-                        "can't get, the queue is closed");
+                        "can't acquire lock, the queue is closed");
         return -1;
     }
     return 0;
@@ -70,7 +70,7 @@ queue_put(MemQueue *queue, struct queue *q,
         }
     }
 
-    Py_INCREF(val);
+    Py_XINCREF(val);
     i->val = val;
     i->kind = kind;
     i->id = id;
@@ -158,15 +158,17 @@ MemQueue_AddChannel(MemQueue *queue, module_state *state)
 }
 
 int
-MemQueue_Broadcast(MemQueue *queue,  module_state *state,
-                   PyObject *sender, PyObject *msg)
+MemQueue_HubBroadcast(MemQueue *queue,  module_state *state,
+                      PyObject *sender, PyObject *msg)
 {
     if (queue_lock(queue, state)) {
         return -1;
     }
 
     for (ssize_t i = 1; i < queue->nqueues; i++) {
-        if (queue_put(queue, &queue->queues[i], sender, E_BROADCAST, 0, msg)) {
+        if (queue_put(queue, &queue->queues[i],
+                      sender, E_HUB_BROADCAST, 0, msg))
+        {
             queue_unlock(queue);
             return -1;
         }
@@ -176,46 +178,43 @@ MemQueue_Broadcast(MemQueue *queue,  module_state *state,
     return 0;
 }
 
+MEMHIVE_REMOTE(int)
+MemQueue_HubRequest(MemQueue *queue, module_state *state,
+                    ssize_t channel, PyObject *sender, uint64_t id, PyObject *val)
+{
+    assert(val != NULL);
+    return MemQueue_Put(queue, state, E_HUB_REQUEST, channel, sender, id, val);
+}
+
 int
-MemQueue_Request(MemQueue *queue, module_state *state,
+MemQueue_HubPush(MemQueue *queue, module_state *state,
                  ssize_t channel, PyObject *sender, uint64_t id, PyObject *val)
 {
-    if (queue_lock(queue, state)) {
-        return -1;
-    }
-
-    if (queue_put(queue, &queue->queues[channel], sender, E_REQUEST, id, val)) {
-        queue_unlock(queue);
-        return -1;
-    }
-
-    queue_unlock(queue);
-
-    return 0;
+    return MemQueue_Put(queue, state, E_HUB_PUSH, channel, sender, id, val);
 }
 
-int
-MemQueue_Push(MemQueue *queue, module_state *state,
-              ssize_t channel, PyObject *sender, uint64_t id, PyObject *val)
+MEMHIVE_REMOTE(int)
+MemQueue_Put(MemQueue *queue,
+             module_state *state,
+             memqueue_event_t kind,
+             ssize_t channel,
+             PyObject *sender,
+             uint64_t id,
+             PyObject *val)
 {
     if (queue_lock(queue, state)) {
         return -1;
     }
-
-    if (queue_put(queue, &queue->queues[channel], sender, E_PUSH, id, val)) {
-        queue_unlock(queue);
-        return -1;
-    }
-
+    int ret = queue_put(queue, &queue->queues[channel], sender, kind, id, val);
     queue_unlock(queue);
-    return 0;
+    return ret;
 }
 
-int
+MEMHIVE_REMOTE(int)
 MemQueue_Listen(MemQueue *queue, module_state *state,
                 ssize_t channel,
-                memqueue_event_t *event, PyObject **sender,
-                uint64_t *id, PyObject **val)
+                memqueue_event_t *event, RemoteObject **sender,
+                uint64_t *id, RemoteObject **val)
 {
     if (queue_lock(queue, state)) {
         return -1;
@@ -257,8 +256,8 @@ MemQueue_Listen(MemQueue *queue, module_state *state,
 
     struct item *prev_first = q->first;
     *event = prev_first->kind;
-    *val = prev_first->val;
-    *sender = prev_first->sender;
+    *val = (RemoteObject*)prev_first->val;
+    *sender = (RemoteObject*)prev_first->sender;
     *id = prev_first->id;
 
     q->first = prev_first->next;
@@ -302,7 +301,9 @@ MemQueue_Close(MemQueue *queue, module_state *state)
 void
 MemQueue_Destroy(MemQueue *queue)
 {
-    assert(queue->closed);
+    if (!queue->closed) {
+        Py_FatalError("destroying a queue before closing");
+    }
     if (queue->destroyed) {
         return;
     }
@@ -408,7 +409,7 @@ mq_req_tp_call(MemQueueRequest *o, PyObject *args, PyObject *kwargs)
 
     if (o->r_dir == D_FROM_SUB) {
         MemHive *hive = (MemHive *)(((MemHiveSub *)o->r_owner)->hive);
-        int r = MemQueue_Push(
+        int r = MemQueue_HubPush(
             &hive->for_main, state, o->r_channel,
             o->r_owner, o->r_id, ret);
         if (r) {
@@ -417,7 +418,7 @@ mq_req_tp_call(MemQueueRequest *o, PyObject *args, PyObject *kwargs)
         Py_RETURN_NONE;
     } else if (o->r_dir == D_FROM_MAIN) {
         MemHive *hive = (MemHive *)o->r_owner;
-        int r = MemQueue_Request(
+        int r = MemQueue_HubRequest(
             &hive->for_subs, state, o->r_channel,
             o->r_owner, o->r_id, ret);
         if (r) {
