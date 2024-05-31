@@ -449,6 +449,14 @@ err:
 }
 
 static PyObject *
+memhive_py_close_subs_health_queue(MemHive *o, PyObject *args)
+{
+    int ret = MemQueue_Close(&o->subs_health, o->mod_state);
+    assert(ret == 0);
+    Py_RETURN_NONE;
+}
+
+static PyObject *
 memhive_py_close_subs_queue(MemHive *o, PyObject *args)
 {
     memhive_do_refs(o);
@@ -485,6 +493,8 @@ static PyMethodDef MemHive_methods[] = {
     {"listen_subs_health", (PyCFunction)memhive_py_listen_subs_health,
         METH_NOARGS, NULL},
     {"close_subs_queue", (PyCFunction)memhive_py_close_subs_queue,
+        METH_NOARGS, NULL},
+    {"close_subs_health_queue", (PyCFunction)memhive_py_close_subs_health_queue,
         METH_NOARGS, NULL},
     {"close", (PyCFunction)memhive_py_close, METH_NOARGS, NULL},
     {"process_refs", (PyCFunction)memhive_py_do_refs, METH_NOARGS, NULL},

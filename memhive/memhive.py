@@ -1,7 +1,10 @@
+import builtins
+import dataclasses
 import itertools
 import marshal
 import sys
 import textwrap
+import typing
 import threading
 
 import _xxsubinterpreters as subint
@@ -26,7 +29,7 @@ class CoreMemHive(core.MemHive):
         self._sub_counter = itertools.count(42).__next__
 
 
-    def add_worker(self, *, setup=None, main=None):
+    def add_worker(self, *, main=None):
         def runner(code):
             sub = subint.create(isolated=True)
             try:
@@ -39,24 +42,15 @@ class CoreMemHive(core.MemHive):
                 subint.destroy(sub)
 
         sub_id = self._sub_counter()
-        code = self._make_code(setup=setup, main=main, sub_id=sub_id)
+        code = self._make_code(main=main, sub_id=sub_id)
         worker_thread = threading.Thread(target=runner, args=(code,))
         worker_thread.start()
         self._workers.append(worker_thread)
         return sub_id
 
-    def _make_code(self, *, setup, main, sub_id):
+    def _make_code(self, *, main, sub_id):
         hive_id = repr(id(self))
         sys_path = repr(sys.path)
-
-        has_setup = repr(False)
-        if setup:
-            has_setup = repr(True)
-            setup_name = repr(setup.__name__)
-            setup_code = repr(marshal.dumps(setup.__code__))
-        else:
-            setup_name = repr(None)
-            setup_code = repr(None)
 
         main_name = repr(main.__name__)
         main_code = repr(marshal.dumps(main.__code__))
@@ -84,20 +78,6 @@ class CoreMemHive(core.MemHive):
                 __traceback.print_exception(nex, file=__sys.stderr)
                 raise nex
 
-            try:
-                if {has_setup}:
-                    __setup = __types.FunctionType(
-                        __marshal.loads({setup_code}), globals(), {setup_name}
-                    )
-            except Exception as ex:
-                __sub.report_error(
-                    'RuntimeError',
-                    'failed to unserialize the "setup" worker function',
-                    ex
-                )
-                __sub.close()
-                __sub = None
-
             if __sub is not None:
                 try:
                     __main = __types.FunctionType(
@@ -109,36 +89,32 @@ class CoreMemHive(core.MemHive):
                 except Exception as ex:
                     __sub.report_error(
                         'RuntimeError',
-                        'failed to unserialize the "main" worker function',
+                        'failed to unserialize the "main()" worker function',
                         ex
                     )
                     __sub.close()
                     __sub == None
 
-            if __sub is not None and {has_setup}:
-                try:
-                    __setup(__sub)
-                except Exception as ex:
-                    __sub.report_error(
-                        'RuntimeError',
-                        'unhandled error during the "setup" worker call',
-                        ex
-                    )
-                    __sub.close()
-                    __sub = None
-
             if __sub is not None:
                 __sub.report_start()
                 try:
                     __main(__sub)
+                except __core.ClosedQueueError:
+                    __sub.report_close() # XXX do this properly
                 except Exception as ex:
                     __sub.report_error(
                         'RuntimeError',
-                        'unhandled error during the "main" worker call',
+                        'unhandled exception during the "main()" worker call',
                         ex
                     )
-                except __core.ClosedQueueError:
-                    __sub.report_close() # XXX do this properly
+                except BaseException as ex:
+                    __sub.report_error(
+                        'RuntimeError',
+                        'unhandled base exception during the "main()"'
+                        'worker call',
+                        ex
+                    )
+                    raise
                 else:
                     __sub.report_close()
                 finally:
@@ -152,19 +128,39 @@ class CoreMemHive(core.MemHive):
         self._workers.clear()
 
 
+@dataclasses.dataclass
+class WorkerStatus:
+
+    wid: int
+    error: BaseException | None = None
+    ready: threading.Event = dataclasses.field(
+        default_factory=threading.Event)
+    completed: threading.Event = dataclasses.field(
+        default_factory=threading.Event)
+
+
 class MemHive:
 
     def __init__(self):
         self._mem = CoreMemHive()
+        self._inside = False
         self._closed = False
+
+        self._workers = {}
+        self._health_listener = None
+        self._health_listener_started = threading.Event()
 
     def _ensure_active(self):
         if self._closed:
             raise RuntimeError('MemHive is closed')
+        if not self._inside:
+            raise RuntimeError("MemHive hasn't entered its context")
 
-    def add_worker(self, *, setup=None, main=None):
+    def add_worker(self, *, main=None):
         self._ensure_active()
-        self._mem.add_worker(setup=setup, main=main)
+        wid = self._mem.add_worker(main=main)
+        self._workers[wid] = WorkerStatus(wid=wid)
+        self._workers[wid].ready.wait()
 
     def __getitem__(self, key):
         self._ensure_active()
@@ -191,11 +187,45 @@ class MemHive:
         return self._mem.listen()
 
     def __enter__(self):
+        self._inside = True
         self._ensure_active()
+
+        self._health_listener = threading.Thread(
+            target=self._listen_for_health_updates)
+        self._health_listener.start()
+        self._health_listener_started.wait()
+
         return self
 
     def __exit__(self, *e):
+        self._inside = False
         self.close()
+
+    def _listen_for_health_updates(self):
+        self._health_listener_started.set()
+
+        while True:
+            try:
+                msg = self._mem.listen_subs_health()
+            except core.ClosedQueueError:
+                return
+
+            match msg:
+                case ("ERROR", wid, err_name, err_msg, exc):
+                    err_type = getattr(builtins, err_name)
+                    new_err = err_type(err_msg)
+                    new_err.__cause__ = exc
+                    self._workers[wid].error = new_err
+                    self._workers[wid].completed.set()
+
+                case ("CLOSE", wid):
+                    self._workers[wid].completed.set()
+
+                case ("START", wid):
+                    self._workers[wid].ready.set()
+
+                case _:
+                    raise RuntimeError(f'unknown message {_}')
 
     def process_refs(self):
         self._mem.process_refs()
@@ -203,8 +233,27 @@ class MemHive:
     def close(self):
         if self._closed:
             return
-        self._closed = True
 
-        self._mem.close_subs_queue()
-        self._mem.join_worker_threads()
-        self._mem.close()
+        try:
+            errors = []
+            for wrk in self._workers.values():
+                wrk.completed.wait()
+                if wrk.error is not None:
+                    errors.append(wrk.error)
+
+            if errors:
+                raise ExceptionGroup(
+                    'one or many subinterpreter workers crashed with an error',
+                    errors
+                )
+
+        finally:
+            self._closed = True
+
+            self._mem.close_subs_health_queue()
+            self._health_listener.join()
+            self._health_listener = None
+
+            self._mem.close_subs_queue()
+            self._mem.join_worker_threads()
+            self._mem.close()
