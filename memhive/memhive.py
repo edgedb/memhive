@@ -9,7 +9,8 @@ import threading
 
 import _xxsubinterpreters as subint
 
-import memhive.core as core
+from . import core
+from . import errors
 
 
 class CoreMemHive(core.MemHive):
@@ -235,16 +236,16 @@ class MemHive:
             return
 
         try:
-            errors = []
+            ers = []
             for wrk in self._workers.values():
                 wrk.completed.wait()
                 if wrk.error is not None:
-                    errors.append(wrk.error)
+                    ers.append(wrk.error)
 
-            if errors:
-                raise ExceptionGroup(
+            if ers:
+                raise errors.MemhiveGroupError(
                     'one or many subinterpreter workers crashed with an error',
-                    errors
+                    ers
                 )
 
         finally:

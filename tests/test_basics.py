@@ -1,5 +1,7 @@
+import io
 import unittest
 import tempfile
+import traceback
 
 import memhive
 
@@ -33,5 +35,25 @@ class BasicsTest(unittest.TestCase):
         def worker(sub):
             1/0
 
-        with memhive.MemHive() as m:
-            m.add_worker(main=worker)
+        try:
+            with memhive.MemHive() as m:
+                m.add_worker(main=worker)
+        except memhive.MemhiveGroupError as ex:
+            file = io.StringIO()
+            traceback.print_exception(ex, file=file)
+            render = file.getvalue()
+
+            self.assertIn(
+                'subinterpreter workers crashed',
+                render
+            )
+            self.assertIn(
+                '__subinterpreter__.ZeroDivisionError: division by zero',
+                render
+            )
+            self.assertIn(
+                'unhandled exception during the "main()" worker call',
+                render
+            )
+        else:
+            self.fail('exception was not propagated')

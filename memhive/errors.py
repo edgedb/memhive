@@ -1,0 +1,2 @@
+class MemhiveGroupError(ExceptionGroup):
+    pass
