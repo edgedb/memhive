@@ -159,7 +159,9 @@ memhive_tp_dealloc(MemHive *o)
     MemQueue_Destroy(&o->for_main);
     MemQueue_Destroy(&o->for_subs);
 
-    PyObject_Del(o);
+    PyTypeObject *tp = Py_TYPE(o);
+    tp->tp_free((PyObject *)o);
+    Py_DecRef((PyObject*)tp);
 }
 
 

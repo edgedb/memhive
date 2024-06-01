@@ -83,7 +83,9 @@ memhive_sub_tp_len(MemHiveSub *o)
 static void
 memhive_sub_tp_dealloc(MemHiveSub *o)
 {
-    PyObject_Del(o);
+    PyTypeObject *tp = Py_TYPE(o);
+    tp->tp_free((PyObject *)o);
+    Py_DecRef((PyObject*)tp);
 }
 
 static PyObject *
