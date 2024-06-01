@@ -7,6 +7,9 @@
 // A type alias for PyObject* pointers to objects owned by a different
 // sub-interpreter.
 
+
+PyObject * MemHive_CopyString(PyObject *o);
+
 PyObject * MemHive_CopyObject(module_state *, RemoteObject *);
 
 #endif

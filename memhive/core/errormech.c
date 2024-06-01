@@ -1,6 +1,7 @@
 #include "errormech.h"
 #include "debug.h"
 #include "module.h"
+#include "utils.h"
 
 #include "Python.h"
 #include "frameobject.h"
@@ -664,7 +665,7 @@ restore_error(module_state *state,
 
     RemoteObject *_msg = ERR_GET_MSG((PyObject*)error_desc);
     assert((PyObject*)_msg != Py_None);
-    msg = _PyUnicode_Copy((PyObject*)_msg);
+    msg = MemHive_CopyString((PyObject*)_msg);
     if (msg == NULL) {
         goto error;
     }

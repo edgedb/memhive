@@ -136,6 +136,12 @@ module_clear(PyObject *mod)
     return 0;
 }
 
+static void
+module_free(PyObject *module)
+{
+    (void)module_clear(module);
+}
+
 
 static int
 module_traverse(PyObject *mod, visitproc visit, void *arg)
@@ -213,7 +219,7 @@ static struct PyModuleDef memhive_module = {
     .m_slots = module_slots,
     .m_traverse = module_traverse,
     .m_clear = module_clear,
-    .m_free = NULL,
+    .m_free = (freefunc)module_free,
 };
 
 

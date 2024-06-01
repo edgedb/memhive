@@ -4,10 +4,14 @@ import itertools
 import marshal
 import sys
 import textwrap
-import typing
 import threading
 
-import _xxsubinterpreters as subint
+if sys.version_info[:2] >= (3, 13):
+    Py_3_13 = True
+    import _interpreters as subint
+else:
+    Py_3_13 = False
+    import _xxsubinterpreters as subint
 
 from . import core
 from . import errors
@@ -32,7 +36,10 @@ class CoreMemHive(core.MemHive):
 
     def add_worker(self, *, main=None):
         def runner(code):
-            sub = subint.create(isolated=True)
+            if Py_3_13:
+                sub = subint.create('isolated')
+            else:
+                sub = subint.create(isolated=True)
             try:
                 subint.run_string(sub, code)
             except Exception as ex:
@@ -94,7 +101,7 @@ class CoreMemHive(core.MemHive):
                         ex
                     )
                     __sub.close()
-                    __sub == None
+                    __sub = None
 
             if __sub is not None:
                 __sub.report_start()
@@ -120,7 +127,8 @@ class CoreMemHive(core.MemHive):
                     __sub.report_close()
                 finally:
                     __sub.close()
-                    del __sub
+                    __sub = None
+
         ''')
 
     def join_worker_threads(self):

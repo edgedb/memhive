@@ -1,4 +1,4 @@
-.PHONY: build test clean all testinstalled
+.PHONY: build test clean all testinstalled rtest
 
 
 PYTHON ?= python
@@ -20,3 +20,6 @@ test:
 
 testinstalled:
 	cd /tmp && $(PYTHON) $(ROOT)/tests/__init__.py
+
+rtest:
+	python -m test.regrtest -R3:3 --testdir tests/

@@ -790,6 +790,18 @@ map_bitindex(uint32_t bitmap, uint32_t bit)
     return map_bitcount(bitmap & (bit - 1));
 }
 
+#ifdef _PyTime_GetMonotonicClock
+#define get_monotonic_clock() (int64_t)_PyTime_GetMonotonicClock()
+#else
+static int64_t
+get_monotonic_clock()
+{
+    PyTime_t result;
+    PyTime_MonotonicRaw(&result);
+    return (int64_t)result;
+}
+#endif
+
 static uint64_t
 new_mutid(module_state *state)
 {
@@ -804,9 +816,9 @@ new_mutid(module_state *state)
     // nanosecond precision (which should be enough) and
     // it might actually be quicker than messing with locks
     // (hey, we should benchmark that.)
-    uint64_t mutid = (uint64_t)_PyTime_GetMonotonicClock();
+    uint64_t mutid = (uint64_t)get_monotonic_clock();
     if (mutid == 0) {
-        mutid = (uint64_t)_PyTime_GetMonotonicClock();
+        mutid = (uint64_t)get_monotonic_clock();
     }
     if (mutid == 0) {
         // mutid=0 is special, that's what new nodes are created with.
@@ -1768,7 +1780,7 @@ map_node_bitmap_dump(module_state *state,
         goto error;
     }
     TRACK(state, tmp1);
-    tmp2 = _PyLong_Format(tmp1, 2);
+    tmp2 = PyNumber_ToBase(tmp1, 2);
     DECREF(state, tmp1);
     if (tmp2 == NULL) {
         goto error;

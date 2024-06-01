@@ -1,6 +1,30 @@
+#include <string.h>
+
 #include "memhive.h"
 #include "debug.h"
 #include "track.h"
+
+
+PyObject *
+MemHive_CopyString(PyObject *o)
+{
+#ifdef _PyUnicode_Copy
+    return _PyUnicode_Copy(o);
+#else
+    PyObject *copy = PyUnicode_New(
+        PyUnicode_GET_LENGTH(o),
+        PyUnicode_MAX_CHAR_VALUE(o)
+    );
+    if (copy == NULL) {
+        return NULL;
+    }
+    memcpy(
+        PyUnicode_DATA(copy), PyUnicode_DATA(o),
+        PyUnicode_GET_LENGTH(o) * PyUnicode_KIND(o)
+    );
+    return copy;
+#endif
+}
 
 
 PyObject *
@@ -47,7 +71,7 @@ MemHive_CopyObject(module_state *state, RemoteObject *ro)
         // Safe to call this as it will only read the data
         // from "o", allocate a new object in the host interpreter,
         // and memcpy into it.
-        PyObject *copy = _PyUnicode_Copy(o);
+        PyObject *copy = MemHive_CopyString(o);
         TRACK(state, copy);
         return copy;
     }

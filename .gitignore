@@ -22,4 +22,5 @@ __pycache__/
 /.venv*
 /wheelhouse
 /.vscode
+/reflog.txt
 
