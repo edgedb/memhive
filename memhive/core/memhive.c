@@ -232,7 +232,7 @@ MemHive_Len(MemHive *hive)
     return memhive_tp_len(hive);
 }
 
-PyObject *
+MEMHIVE_REMOTE(PyObject *)
 MemHive_Get(module_state *state, MemHive *hive, PyObject *key)
 {
     if (pthread_rwlock_rdlock(&hive->index_rwlock)) {
@@ -245,11 +245,10 @@ MemHive_Get(module_state *state, MemHive *hive, PyObject *key)
         Py_FatalError("Failed to release the MemHive index read lock");
     }
 
-    Py_XINCREF(val);
     return val;
 }
 
-int
+MEMHIVE_REMOTE(int)
 MemHive_Contains(module_state *state, MemHive *hive, PyObject *key)
 {
     if (pthread_rwlock_rdlock(&hive->index_rwlock)) {
