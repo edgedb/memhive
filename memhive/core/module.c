@@ -114,8 +114,6 @@ module_clear(PyObject *mod)
     Py_CLEAR(state->MemQueueResponseType);
     Py_CLEAR(state->MemQueueBroadcastType);
 
-    Py_CLEAR(state->empty_bitmap_node);
-
     Py_CLEAR(state->sub);
 
     Py_CLEAR(state->exc_empty_dict);
@@ -302,9 +300,6 @@ module_exec(PyObject *m)
     state->interpreter_id = PyInterpreterState_GetID(interp);
 
     state->sub = NULL; // will be initialized later, in MemHiveSub's __init__
-
-    // Important to call this one after `state->interpreter_id` is set
-    state->empty_bitmap_node = (PyObject *)_map_node_bitmap_new(state, 0, 0);
 
     ProxyDescriptor *proxy_desc = PyMem_RawMalloc(sizeof(ProxyDescriptor));
     if (proxy_desc == NULL) {

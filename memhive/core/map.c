@@ -933,14 +933,7 @@ _map_node_bitmap_new(module_state *state, Py_ssize_t size, uint64_t mutid)
 static MapNode *
 map_node_bitmap_new(module_state *state, Py_ssize_t size, uint64_t mutid)
 {
-
-    if (size == 0 && mutid == 0) {
-        assert(state->empty_bitmap_node != NULL);
-        assert(IS_NODE_LOCAL(state, state->empty_bitmap_node));
-        NODE_INCREF(state, state->empty_bitmap_node);
-        return (MapNode *)state->empty_bitmap_node;
-    }
-
+    // TODO: re-introduce the empty bitmap node cache
     return _map_node_bitmap_new(state, size, mutid);
 }
 

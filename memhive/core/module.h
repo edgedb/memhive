@@ -15,8 +15,6 @@ typedef struct {
     PyObject *sub;
     int64_t interpreter_id;
 
-    PyObject *empty_bitmap_node;
-
     PyObject *ClosedQueueError;
 
     PyTypeObject *MapType;
