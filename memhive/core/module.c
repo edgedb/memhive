@@ -212,7 +212,7 @@ disable_object_tracking(PyObject *m)
 
 static struct PyModuleDef memhive_module = {
     .m_base = PyModuleDef_HEAD_INIT,
-    .m_name = "_memhive",
+    .m_name = "memhive.core._core",
     .m_doc = NULL,
     .m_size = sizeof(module_state),
     .m_methods = module_methods,
