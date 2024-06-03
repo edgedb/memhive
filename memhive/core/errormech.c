@@ -331,11 +331,14 @@ reflect_error(PyObject *err, PyObject *memo, PyObject *ret)
         goto err;
     }
 
-    if (reflect_tb(tb_list,
-                   (PyTracebackObject*)PyException_GetTraceback(err)) < 0)
+    PyTracebackObject* tb =
+        (PyTracebackObject*)PyException_GetTraceback(err);  /* newref */
+    if (reflect_tb(tb_list, tb) < 0)
     {
+        Py_CLEAR(tb);
         goto err;
     }
+    Py_CLEAR(tb);
 
     PyObject *tb_tuple = list_to_tuple(tb_list);
     Py_CLEAR(tb_list);
@@ -385,6 +388,7 @@ reflect_error(PyObject *err, PyObject *memo, PyObject *ret)
     if (PyList_Append(ret, reflected_error) < 0) {
         goto err;
     }
+    Py_DECREF(reflected_error);
 
     ssize_t p = Py_SIZE(ret) - 1;
     PyObject *pp = PyLong_FromSsize_t(p);
@@ -431,7 +435,7 @@ MemHive_DumpError(PyObject *err)
         goto err;
     }
 
-    Py_XDECREF(memo);
+    Py_DECREF(memo);
 
     PyObject *ret_tup = list_to_tuple(ret);
     Py_DECREF(ret);
